@@ -19,7 +19,7 @@ import {
   setAllPointersToModel,
   setModelPointer,
 } from '@utils/config'
-import { getModelManager } from '@utils/model'
+import { getModelManager, reloadModelManager } from '@utils/model'
 import { getTheme } from '@utils/theme'
 import { debug as debugLogger } from '@utils/log/debugLogger'
 
@@ -40,6 +40,11 @@ import { useEscapeNavigation } from './useEscapeNavigation'
 import * as modelFetchers from './modelFetchers'
 import TextInput from '../TextInput'
 import { ModelSelectionScreen } from './ModelSelectionScreen'
+import {
+  ensureLlamaCppRuntime,
+  getLlamaCppBaseURL,
+  LLAMA_CPP_DEFAULT_API_KEY,
+} from '@services/ai/llamaCppRuntime'
 
 type WindowedOptionsProps = {
   options: Array<{ value: string; label: string }>
@@ -102,6 +107,7 @@ type Props = {
   onDone: () => void
   abortController?: AbortController
   targetPointer?: ModelPointerType
+  editingModelName?: string
   isOnboarding?: boolean
   onCancel?: () => void
   skipModelType?: boolean
@@ -111,6 +117,7 @@ export function ModelSelector({
   onDone: onDoneProp,
   abortController,
   targetPointer,
+  editingModelName,
   isOnboarding = false,
   onCancel,
   skipModelType = false,
@@ -129,8 +136,14 @@ export function ModelSelector({
   }
   const exitState = useExitOnCtrlCD(() => process.exit(0))
 
+  const [editingProfile] = useState(() =>
+    editingModelName
+      ? (config.modelProfiles ?? []).find(p => p.modelName === editingModelName)
+      : undefined,
+  )
+
   const getInitialScreen = (): string => {
-    return 'provider'
+    return editingProfile ? 'modelInput' : 'provider'
   }
 
   const [screenStack, setScreenStack] = useState<
@@ -141,6 +154,12 @@ export function ModelSelector({
       | 'apiKey'
       | 'resourceName'
       | 'baseUrl'
+      | 'llamaCppMode'
+      | 'llamaCppBinaryPath'
+      | 'llamaCppModelPath'
+      | 'llamaCppHost'
+      | 'llamaCppPort'
+      | 'llamaCppParams'
       | 'model'
       | 'modelInput'
       | 'modelParams'
@@ -160,6 +179,12 @@ export function ModelSelector({
       | 'apiKey'
       | 'resourceName'
       | 'baseUrl'
+      | 'llamaCppMode'
+      | 'llamaCppBinaryPath'
+      | 'llamaCppModelPath'
+      | 'llamaCppHost'
+      | 'llamaCppPort'
+      | 'llamaCppParams'
       | 'model'
       | 'modelInput'
       | 'modelParams'
@@ -179,27 +204,36 @@ export function ModelSelector({
   }
 
   const [selectedProvider, setSelectedProvider] = useState<ProviderType>(
-    config.primaryProvider ?? 'anthropic',
+    (editingProfile?.provider as ProviderType) ??
+      config.primaryProvider ??
+      'anthropic',
   )
 
-  const [selectedModel, setSelectedModel] = useState<string>('')
-  const [apiKey, setApiKey] = useState<string>('')
+  const [selectedModel, setSelectedModel] = useState<string>(
+    editingProfile?.modelName ?? '',
+  )
+  const [apiKey, setApiKey] = useState<string>(editingProfile?.apiKey ?? '')
 
   const [maxTokens, setMaxTokens] = useState<string>(
-    config.maxTokens?.toString() || DEFAULT_MAX_TOKENS.toString(),
+    editingProfile?.maxTokens?.toString() ||
+      config.maxTokens?.toString() ||
+      DEFAULT_MAX_TOKENS.toString(),
   )
   const [maxTokensMode, setMaxTokensMode] = useState<'preset' | 'custom'>(
     'preset',
   )
   const [selectedMaxTokensPreset, setSelectedMaxTokensPreset] =
-    useState<number>(config.maxTokens || DEFAULT_MAX_TOKENS)
-  const [reasoningEffort, setReasoningEffort] =
-    useState<ReasoningEffortOption>('medium')
+    useState<number>(
+      editingProfile?.maxTokens || config.maxTokens || DEFAULT_MAX_TOKENS,
+    )
+  const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffortOption>(
+    (editingProfile?.reasoningEffort as ReasoningEffortOption) || 'medium',
+  )
   const [supportsReasoningEffort, setSupportsReasoningEffort] =
     useState<boolean>(false)
 
   const [contextLength, setContextLength] = useState<number>(
-    DEFAULT_CONTEXT_LENGTH,
+    editingProfile?.contextLength || DEFAULT_CONTEXT_LENGTH,
   )
 
   const [activeFieldIndex, setActiveFieldIndex] = useState(0)
@@ -219,6 +253,42 @@ export function ModelSelector({
   const [providerFocusIndex, setProviderFocusIndex] = useState(0)
   const [partnerProviderFocusIndex, setPartnerProviderFocusIndex] = useState(0)
   const [codingPlanFocusIndex, setCodingPlanFocusIndex] = useState(0)
+  const [llamaCppModeFocusIndex, setLlamaCppModeFocusIndex] = useState(0)
+
+  const [llamaCppMode, setLlamaCppMode] = useState<'existing' | 'managed'>(
+    editingProfile?.llamaCpp?.mode ?? 'existing',
+  )
+  const [llamaCppBinaryPath, setLlamaCppBinaryPath] = useState<string>(
+    editingProfile?.llamaCpp?.binaryPath ?? 'llama-server',
+  )
+  const [llamaCppBinaryPathCursorOffset, setLlamaCppBinaryPathCursorOffset] =
+    useState<number>(0)
+  const [llamaCppModelPath, setLlamaCppModelPath] = useState<string>(
+    editingProfile?.llamaCpp?.modelPath ?? '',
+  )
+  const [llamaCppModelPathCursorOffset, setLlamaCppModelPathCursorOffset] =
+    useState<number>(0)
+  const [llamaCppHost, setLlamaCppHost] = useState<string>(
+    editingProfile?.llamaCpp?.host ?? '127.0.0.1',
+  )
+  const [llamaCppHostCursorOffset, setLlamaCppHostCursorOffset] =
+    useState<number>(0)
+  const [llamaCppPort, setLlamaCppPort] = useState<string>(
+    (editingProfile?.llamaCpp?.port ?? 8080).toString(),
+  )
+  const [llamaCppPortCursorOffset, setLlamaCppPortCursorOffset] =
+    useState<number>(0)
+  const [llamaCppCtxSize, setLlamaCppCtxSize] = useState<string>(
+    editingProfile?.llamaCpp?.ctxSize?.toString() ?? '',
+  )
+  const [llamaCppThreads, setLlamaCppThreads] = useState<string>(
+    editingProfile?.llamaCpp?.threads?.toString() ?? '',
+  )
+  const [llamaCppGpuLayers, setLlamaCppGpuLayers] = useState<string>(
+    editingProfile?.llamaCpp?.gpuLayers?.toString() ?? '',
+  )
+  const [llamaCppParamsCursorOffset, setLlamaCppParamsCursorOffset] =
+    useState<number>(0)
 
   const [fetchRetryCount, setFetchRetryCount] = useState<number>(0)
   const [isRetrying, setIsRetrying] = useState<boolean>(false)
@@ -236,7 +306,11 @@ export function ModelSelector({
   const [resourceName, setResourceName] = useState<string>('')
   const [resourceNameCursorOffset, setResourceNameCursorOffset] =
     useState<number>(0)
-  const [customModelName, setCustomModelName] = useState<string>('')
+  const [customModelName, setCustomModelName] = useState<string>(
+    editingProfile?.modelName ?? '',
+  )
+  const [preferManualModelInput, setPreferManualModelInput] =
+    useState<boolean>(false)
   const [customModelNameCursorOffset, setCustomModelNameCursorOffset] =
     useState<number>(0)
 
@@ -246,11 +320,15 @@ export function ModelSelector({
   const [ollamaBaseUrlCursorOffset, setOllamaBaseUrlCursorOffset] =
     useState<number>(0)
 
-  const [customBaseUrl, setCustomBaseUrl] = useState<string>('')
+  const [customBaseUrl, setCustomBaseUrl] = useState<string>(
+    selectedProvider === 'custom-openai' ? (editingProfile?.baseURL ?? '') : '',
+  )
   const [customBaseUrlCursorOffset, setCustomBaseUrlCursorOffset] =
     useState<number>(0)
 
-  const [providerBaseUrl, setProviderBaseUrl] = useState<string>('')
+  const [providerBaseUrl, setProviderBaseUrl] = useState<string>(
+    selectedProvider !== 'custom-openai' ? (editingProfile?.baseURL ?? '') : '',
+  )
   const [providerBaseUrlCursorOffset, setProviderBaseUrlCursorOffset] =
     useState<number>(0)
 
@@ -259,6 +337,7 @@ export function ModelSelector({
   const mainMenuOptions = [
     { value: 'custom-openai', label: 'Custom OpenAI-Compatible API' },
     { value: 'custom-anthropic', label: 'Custom Messages API (v1/messages)' },
+    { value: 'llama-cpp', label: 'llama.cpp (local GGUF)' },
     { value: 'partnerProviders', label: 'Partner Providers →' },
     { value: 'partnerCodingPlans', label: 'Partner Coding Plans →' },
     {
@@ -317,6 +396,7 @@ export function ModelSelector({
   })
 
   useEffect(() => {
+    if (editingProfile) return
     if (!apiKeyEdited && selectedProvider) {
       if (process.env[selectedProvider.toUpperCase() + '_API_KEY']) {
         setApiKey(
@@ -326,7 +406,7 @@ export function ModelSelector({
         setApiKey('')
       }
     }
-  }, [selectedProvider, apiKey, apiKeyEdited])
+  }, [editingProfile, selectedProvider, apiKeyEdited])
 
   useEffect(() => {
     if (
@@ -336,6 +416,87 @@ export function ModelSelector({
       setContextLength(DEFAULT_CONTEXT_LENGTH)
     }
   }, [currentScreen, contextLength])
+
+  useEffect(() => {
+    if (!editingProfile) return
+    const fromCatalog = models[selectedProvider as keyof typeof models]?.find(
+      m => m.model === editingProfile.modelName,
+    )
+    setSupportsReasoningEffort(Boolean(fromCatalog?.supports_reasoning_effort))
+  }, [editingProfile, selectedProvider])
+
+  useEffect(() => {
+    if (!editingProfile) return
+
+    const sameModelList = (left: ModelInfo[], right: ModelInfo[]): boolean => {
+      if (left.length !== right.length) return false
+      for (let i = 0; i < left.length; i++) {
+        if (left[i]?.model !== right[i]?.model) return false
+      }
+      return true
+    }
+
+    const setAvailableModelsIfChanged = (next: ModelInfo[]) => {
+      setAvailableModels(prev => (sameModelList(prev, next) ? prev : next))
+    }
+
+    const mergeUniqueModels = (items: ModelInfo[]): ModelInfo[] => {
+      const result: ModelInfo[] = []
+      const seen = new Set<string>()
+      for (const item of items) {
+        const key = String(item?.model || '').trim()
+        if (!key || seen.has(key)) continue
+        seen.add(key)
+        result.push(item)
+      }
+      return result
+    }
+
+    const mapCatalogModels = (provider: ProviderType): ModelInfo[] => {
+      const providerModels = models[provider as keyof typeof models] ?? []
+      return (providerModels as any[]).map(model => ({
+        model: String(model.model),
+        provider,
+        max_tokens: model.max_output_tokens,
+        supports_vision: Boolean(model.supports_vision),
+        supports_function_calling: Boolean(model.supports_function_calling),
+        supports_reasoning_effort: Boolean(model.supports_reasoning_effort),
+      }))
+    }
+
+    const baseline: ModelInfo[] = mergeUniqueModels([
+      ...mapCatalogModels(selectedProvider),
+      {
+        model: editingProfile.modelName,
+        provider: selectedProvider,
+        max_tokens: editingProfile.maxTokens,
+        context_length: editingProfile.contextLength,
+        supports_reasoning_effort: Boolean(editingProfile.reasoningEffort),
+      },
+    ])
+    setAvailableModelsIfChanged(baseline)
+
+    if (
+      selectedProvider === 'custom-openai' &&
+      editingProfile.baseURL &&
+      editingProfile.apiKey
+    ) {
+      modelFetchers
+        .fetchCustomOpenAIModels({
+          apiKey: editingProfile.apiKey,
+          customBaseUrl: editingProfile.baseURL,
+          setModelLoadError,
+        })
+        .then(fetched => {
+          setAvailableModelsIfChanged(
+            mergeUniqueModels([...fetched, ...baseline]),
+          )
+        })
+        .catch(() => {
+          // keep baseline list for selection even if network fetch fails
+        })
+    }
+  }, [editingProfile, selectedProvider])
 
   const providerReservedLines = 8 + containerPaddingY * 2 + containerGap * 2
   const partnerReservedLines = 10 + containerPaddingY * 2 + containerGap * 3
@@ -386,6 +547,11 @@ export function ModelSelector({
     if (provider === 'custom') {
       saveConfiguration(providerType, selectedModel || '')
       onDone()
+    } else if (provider === 'llama-cpp') {
+      setSelectedProvider('llama-cpp' as ProviderType)
+      setApiKey(LLAMA_CPP_DEFAULT_API_KEY)
+      setProviderBaseUrl(providers[providerType]?.baseURL || '')
+      navigateTo('llamaCppMode')
     } else if (provider === 'custom-openai' || provider === 'ollama') {
       const defaultBaseUrl = providers[providerType]?.baseURL || ''
       setProviderBaseUrl(defaultBaseUrl)
@@ -421,11 +587,9 @@ export function ModelSelector({
 
       if (responseData.data && Array.isArray(responseData.data)) {
         models = responseData.data
-      }
-      else if (Array.isArray(responseData.models)) {
+      } else if (Array.isArray(responseData.models)) {
         models = responseData.models
-      }
-      else if (Array.isArray(responseData)) {
+      } else if (Array.isArray(responseData)) {
         models = responseData
       } else {
         throw new Error(
@@ -641,6 +805,17 @@ export function ModelSelector({
         return customModels
       }
 
+      if (selectedProvider === 'llama-cpp') {
+        const llamaModels = await modelFetchers.fetchLlamaCppModels({
+          apiKey: apiKey || LLAMA_CPP_DEFAULT_API_KEY,
+          baseURL: providerBaseUrl || getLlamaCppBaseURL(),
+          setModelLoadError,
+        })
+        setAvailableModels(llamaModels)
+        navigateTo('model')
+        return llamaModels
+      }
+
       if (selectedProvider === 'gemini') {
         const geminiModels = await modelFetchers.fetchGeminiModels({
           apiKey,
@@ -726,6 +901,8 @@ export function ModelSelector({
 
       if (selectedProvider === 'custom-openai') {
         baseURL = customBaseUrl
+      } else if (selectedProvider === 'llama-cpp') {
+        baseURL = providerBaseUrl || getLlamaCppBaseURL()
       }
 
       const openai = new OpenAI({
@@ -825,6 +1002,112 @@ export function ModelSelector({
     navigateTo('apiKey')
   }
 
+  function getLlamaCppModelId(): string {
+    const pathParts = llamaCppModelPath.split(/[\\/]/)
+    return pathParts[pathParts.length - 1] || 'llama-cpp'
+  }
+
+  function handleLlamaCppModeSelection(mode: 'existing' | 'managed') {
+    setLlamaCppMode(mode)
+    setApiKey(LLAMA_CPP_DEFAULT_API_KEY)
+    if (mode === 'existing') {
+      setProviderBaseUrl(providerBaseUrl || getLlamaCppBaseURL())
+      navigateTo('baseUrl')
+      return
+    }
+    navigateTo('llamaCppBinaryPath')
+  }
+
+  function handleLlamaCppBinaryPathSubmit(value: string) {
+    setLlamaCppBinaryPath(value.trim() || 'llama-server')
+    navigateTo('llamaCppModelPath')
+  }
+
+  function handleLlamaCppModelPathSubmit(value: string) {
+    setLlamaCppModelPath(value.trim())
+    navigateTo('llamaCppHost')
+  }
+
+  function handleLlamaCppHostSubmit(value: string) {
+    const host = value.trim() || '127.0.0.1'
+    setLlamaCppHost(host)
+    navigateTo('llamaCppPort')
+  }
+
+  function handleLlamaCppPortSubmit(value: string) {
+    const port = value.trim() || '8080'
+    setLlamaCppPort(port)
+    navigateTo('llamaCppParams')
+  }
+
+  async function handleLlamaCppParamsSubmit() {
+    const [ctxSizeRaw, threadsRaw, gpuLayersRaw] = llamaCppCtxSize
+      .split(',')
+      .map(value => value.trim())
+    const port = Number(llamaCppPort) || 8080
+    const baseURL = getLlamaCppBaseURL({ host: llamaCppHost, port })
+    const modelId = getLlamaCppModelId()
+
+    setIsLoadingModels(true)
+    setModelLoadError(null)
+    try {
+      const runtimeProfile = await ensureLlamaCppRuntime({
+        name: 'llama.cpp runtime',
+        provider: 'llama-cpp' as ProviderType,
+        modelName: modelId,
+        apiKey: LLAMA_CPP_DEFAULT_API_KEY,
+        baseURL,
+        maxTokens: DEFAULT_MAX_TOKENS,
+        contextLength: Number(ctxSizeRaw) || DEFAULT_CONTEXT_LENGTH,
+        isActive: true,
+        createdAt: Date.now(),
+        llamaCpp: {
+          mode: 'managed',
+          binaryPath: llamaCppBinaryPath,
+          modelPath: llamaCppModelPath,
+          host: llamaCppHost,
+          port,
+          ctxSize: Number(ctxSizeRaw) || undefined,
+          threads: Number(threadsRaw) || undefined,
+          gpuLayers: Number(gpuLayersRaw) || undefined,
+          autoStart: true,
+        },
+      })
+      const fetchedModels = await modelFetchers.fetchLlamaCppModels({
+        apiKey: LLAMA_CPP_DEFAULT_API_KEY,
+        baseURL: runtimeProfile.baseURL || baseURL,
+        setModelLoadError,
+      })
+      const fallbackModel: ModelInfo = {
+        model: modelId,
+        provider: 'llama-cpp',
+        context_length: Number(ctxSizeRaw) || DEFAULT_CONTEXT_LENGTH,
+        max_tokens: DEFAULT_MAX_TOKENS,
+        supports_function_calling: false,
+        supports_reasoning_effort: false,
+        supports_vision: false,
+      }
+      const nextModels =
+        fetchedModels.length > 0 ? fetchedModels : [fallbackModel]
+      setProviderBaseUrl(runtimeProfile.baseURL || baseURL)
+      setCustomModelName(nextModels[0]?.model || modelId)
+      setSelectedModel(nextModels[0]?.model || modelId)
+      setAvailableModels(nextModels)
+      setLlamaCppCtxSize(ctxSizeRaw)
+      setLlamaCppThreads(threadsRaw || '')
+      setLlamaCppGpuLayers(gpuLayersRaw || '')
+      navigateTo('model')
+    } catch (error) {
+      setModelLoadError(
+        error instanceof Error
+          ? error.message
+          : 'Failed to start llama.cpp runtime',
+      )
+    } finally {
+      setIsLoadingModels(false)
+    }
+  }
+
   function handleProviderBaseUrlSubmit(url: string) {
     const cleanUrl = url.replace(/\/+$/, '')
     setProviderBaseUrl(cleanUrl)
@@ -835,6 +1118,12 @@ export function ModelSelector({
       setModelLoadError(null)
 
       fetchOllamaModels().finally(() => {
+        setIsLoadingModels(false)
+      })
+    } else if (selectedProvider === 'llama-cpp') {
+      setIsLoadingModels(true)
+      setModelLoadError(null)
+      fetchModelsWithRetry().finally(() => {
         setIsLoadingModels(false)
       })
     } else {
@@ -924,6 +1213,8 @@ export function ModelSelector({
         testBaseURL = `https://${resourceName}.openai.azure.com/openai/deployments/${selectedModel}`
       } else if (selectedProvider === 'custom-openai') {
         testBaseURL = customBaseUrl
+      } else if (selectedProvider === 'llama-cpp') {
+        testBaseURL = providerBaseUrl || getLlamaCppBaseURL()
       }
 
       const isOpenAICompatible = [
@@ -939,6 +1230,7 @@ export function ModelSelector({
         'xai',
         'groq',
         'custom-openai',
+        'llama-cpp',
       ].includes(selectedProvider)
 
       if (isOpenAICompatible) {
@@ -1263,7 +1555,9 @@ export function ModelSelector({
           model: selectedModel,
           status: response.status,
           error:
-            errorData?.error?.message || errorData?.message || response.statusText,
+            errorData?.error?.message ||
+            errorData?.message ||
+            response.statusText,
         })
 
         let details = `Responses API Error: ${errorMessage}`
@@ -1371,6 +1665,13 @@ export function ModelSelector({
   }
 
   const handleContextLengthSubmit = () => {
+    if (
+      selectedProvider === 'custom-openai' ||
+      selectedProvider === 'llama-cpp'
+    ) {
+      navigateTo('confirmation')
+      return
+    }
     navigateTo('connectionTest')
   }
 
@@ -1388,9 +1689,12 @@ export function ModelSelector({
 
     if (provider === 'azure') {
       baseURL = `https://${resourceName}.openai.azure.com/openai/deployments/${model}`
-    }
-    else if (provider === 'custom-openai') {
+    } else if (provider === 'custom-openai') {
       baseURL = customBaseUrl
+    } else if (provider === 'llama-cpp') {
+      const port = Number(llamaCppPort) || 8080
+      baseURL =
+        providerBaseUrl || getLlamaCppBaseURL({ host: llamaCppHost, port })
     }
 
     try {
@@ -1409,6 +1713,45 @@ export function ModelSelector({
         maxTokens: parseInt(maxTokens) || DEFAULT_MAX_TOKENS,
         contextLength: contextLength || DEFAULT_CONTEXT_LENGTH,
         reasoningEffort,
+        llamaCpp:
+          provider === 'llama-cpp'
+            ? {
+                mode: llamaCppMode,
+                binaryPath:
+                  llamaCppMode === 'managed' ? llamaCppBinaryPath : undefined,
+                modelPath:
+                  llamaCppMode === 'managed' ? llamaCppModelPath : undefined,
+                host: llamaCppHost,
+                port: Number(llamaCppPort) || 8080,
+                ctxSize: Number(llamaCppCtxSize) || undefined,
+                threads: Number(llamaCppThreads) || undefined,
+                gpuLayers: Number(llamaCppGpuLayers) || undefined,
+                autoStart: llamaCppMode === 'managed',
+              }
+            : undefined,
+      }
+
+      const currentConfig = getGlobalConfig()
+      const existingProfiles = [...(currentConfig.modelProfiles ?? [])]
+      const existingIndex = existingProfiles.findIndex(
+        profile => profile.modelName === modelConfig.modelName,
+      )
+
+      // Upsert existing profile so users can reconfigure API key/base URL/tokens.
+      if (existingIndex >= 0) {
+        const existing = existingProfiles[existingIndex]!
+        existingProfiles[existingIndex] = {
+          ...existing,
+          ...modelConfig,
+          createdAt: existing.createdAt,
+          isActive: true,
+        }
+        saveGlobalConfig({
+          ...currentConfig,
+          modelProfiles: existingProfiles,
+        })
+        reloadModelManager()
+        return modelConfig.modelName
       }
 
       return await modelManager.addModel(modelConfig)
@@ -1473,8 +1816,16 @@ export function ModelSelector({
     if (screenStack.length > 1) {
       setScreenStack(prev => prev.slice(0, -1))
     } else {
-      setProviderFocusIndex(0)
-      setScreenStack(['provider'])
+      if (editingProfile) {
+        if (onCancel) {
+          onCancel()
+        } else {
+          onDone()
+        }
+      } else {
+        setProviderFocusIndex(0)
+        setScreenStack(['provider'])
+      }
     }
   }
 
@@ -1598,6 +1949,18 @@ export function ModelSelector({
       }
     }
 
+    if (currentScreen === 'llamaCppMode') {
+      const modes = ['existing', 'managed'] as const
+      if (key.upArrow || key.downArrow) {
+        setLlamaCppModeFocusIndex(prev => (prev === 0 ? 1 : 0))
+        return
+      }
+      if (key.return) {
+        handleLlamaCppModeSelection(modes[llamaCppModeFocusIndex])
+        return
+      }
+    }
+
     if (currentScreen === 'apiKey' && key.return) {
       if (apiKey) {
         handleApiKeySubmit(apiKey)
@@ -1649,9 +2012,14 @@ export function ModelSelector({
     }
 
     if (currentScreen === 'modelInput' && key.return) {
-      if (customModelName) {
+      if (preferManualModelInput && customModelName) {
         handleCustomModelSubmit(customModelName)
       }
+      return
+    }
+
+    if (currentScreen === 'modelInput' && key.tab) {
+      setPreferManualModelInput(prev => !prev)
       return
     }
 
@@ -1669,6 +2037,10 @@ export function ModelSelector({
 
     if (currentScreen === 'connectionTest') {
       if (key.return) {
+        if (selectedProvider === 'custom-openai' && !isTestingConnection) {
+          navigateTo('confirmation')
+          return
+        }
         if (!isTestingConnection && !connectionTestResult) {
           handleConnectionTest()
         } else if (connectionTestResult && connectionTestResult.success) {
@@ -2014,10 +2386,11 @@ export function ModelSelector({
       <ModelSelectionScreen
         theme={theme}
         exitState={exitState}
-        providerLabel={getProviderLabel(
-          selectedProvider,
-          availableModels.length,
-        ).split(' (')[0]!}
+        providerLabel={
+          getProviderLabel(selectedProvider, availableModels.length).split(
+            ' (',
+          )[0]!
+        }
         modelTypeText={modelTypeText}
         availableModels={availableModels}
         modelSearchQuery={modelSearchQuery}
@@ -2217,6 +2590,195 @@ export function ModelSelector({
     )
   }
 
+  if (currentScreen === 'llamaCppMode') {
+    const options = [
+      { value: 'existing', label: 'Connect to an existing llama-server' },
+      { value: 'managed', label: 'Launch and manage a local llama-server' },
+    ]
+
+    return (
+      <Box flexDirection="column" gap={1}>
+        <Box
+          flexDirection="column"
+          gap={1}
+          borderStyle="round"
+          borderColor={theme.secondaryBorder}
+          paddingX={2}
+          paddingY={1}
+        >
+          <Text bold>
+            llama.cpp Setup{' '}
+            {exitState.pending
+              ? `(press ${exitState.keyName} again to exit)`
+              : ''}
+          </Text>
+          <Box flexDirection="column" gap={1}>
+            <Text bold>Choose how Kode should connect to llama.cpp:</Text>
+            <WindowedOptions
+              options={options}
+              focusedIndex={llamaCppModeFocusIndex}
+              maxVisible={2}
+              theme={theme}
+            />
+            <Text dimColor>
+              Existing server uses a base URL. Managed mode starts llama-server
+              from a local GGUF model.
+            </Text>
+          </Box>
+        </Box>
+      </Box>
+    )
+  }
+
+  if (currentScreen === 'llamaCppBinaryPath') {
+    return (
+      <Box flexDirection="column" gap={1}>
+        <Box
+          flexDirection="column"
+          gap={1}
+          borderStyle="round"
+          borderColor={theme.secondaryBorder}
+          paddingX={2}
+          paddingY={1}
+        >
+          <Text bold>llama.cpp Binary</Text>
+          <Text>Enter the path to your llama-server binary:</Text>
+          <TextInput
+            placeholder="llama-server"
+            value={llamaCppBinaryPath}
+            onChange={setLlamaCppBinaryPath}
+            onSubmit={handleLlamaCppBinaryPathSubmit}
+            columns={100}
+            cursorOffset={llamaCppBinaryPathCursorOffset}
+            onChangeCursorOffset={setLlamaCppBinaryPathCursorOffset}
+            showCursor={true}
+          />
+          <Text dimColor>Press Enter to continue or Esc to go back</Text>
+        </Box>
+      </Box>
+    )
+  }
+
+  if (currentScreen === 'llamaCppModelPath') {
+    return (
+      <Box flexDirection="column" gap={1}>
+        <Box
+          flexDirection="column"
+          gap={1}
+          borderStyle="round"
+          borderColor={theme.secondaryBorder}
+          paddingX={2}
+          paddingY={1}
+        >
+          <Text bold>GGUF Model File</Text>
+          <Text>Enter the path to the GGUF model to serve:</Text>
+          <TextInput
+            placeholder="/path/to/model.gguf"
+            value={llamaCppModelPath}
+            onChange={setLlamaCppModelPath}
+            onSubmit={handleLlamaCppModelPathSubmit}
+            columns={100}
+            cursorOffset={llamaCppModelPathCursorOffset}
+            onChangeCursorOffset={setLlamaCppModelPathCursorOffset}
+            showCursor={true}
+          />
+          <Text dimColor>Press Enter to continue or Esc to go back</Text>
+        </Box>
+      </Box>
+    )
+  }
+
+  if (currentScreen === 'llamaCppHost') {
+    return (
+      <Box flexDirection="column" gap={1}>
+        <Box
+          flexDirection="column"
+          gap={1}
+          borderStyle="round"
+          borderColor={theme.secondaryBorder}
+          paddingX={2}
+          paddingY={1}
+        >
+          <Text bold>llama.cpp Host</Text>
+          <Text>Enter the host for llama-server:</Text>
+          <TextInput
+            placeholder="127.0.0.1"
+            value={llamaCppHost}
+            onChange={setLlamaCppHost}
+            onSubmit={handleLlamaCppHostSubmit}
+            columns={100}
+            cursorOffset={llamaCppHostCursorOffset}
+            onChangeCursorOffset={setLlamaCppHostCursorOffset}
+            showCursor={true}
+          />
+          <Text dimColor>Press Enter to continue or Esc to go back</Text>
+        </Box>
+      </Box>
+    )
+  }
+
+  if (currentScreen === 'llamaCppPort') {
+    return (
+      <Box flexDirection="column" gap={1}>
+        <Box
+          flexDirection="column"
+          gap={1}
+          borderStyle="round"
+          borderColor={theme.secondaryBorder}
+          paddingX={2}
+          paddingY={1}
+        >
+          <Text bold>llama.cpp Port</Text>
+          <Text>Enter the port for llama-server:</Text>
+          <TextInput
+            placeholder="8080"
+            value={llamaCppPort}
+            onChange={setLlamaCppPort}
+            onSubmit={handleLlamaCppPortSubmit}
+            columns={100}
+            cursorOffset={llamaCppPortCursorOffset}
+            onChangeCursorOffset={setLlamaCppPortCursorOffset}
+            showCursor={true}
+          />
+          <Text dimColor>Press Enter to continue or Esc to go back</Text>
+        </Box>
+      </Box>
+    )
+  }
+
+  if (currentScreen === 'llamaCppParams') {
+    return (
+      <Box flexDirection="column" gap={1}>
+        <Box
+          flexDirection="column"
+          gap={1}
+          borderStyle="round"
+          borderColor={theme.secondaryBorder}
+          paddingX={2}
+          paddingY={1}
+        >
+          <Text bold>llama.cpp Runtime Parameters</Text>
+          <Text>Optionally enter ctx size, threads, GPU layers:</Text>
+          <Text color={theme.secondaryText}>
+            Format: ctxSize,threads,gpuLayers. Example: 8192,8,35. Leave blank
+            for llama.cpp defaults.
+          </Text>
+          <TextInput
+            placeholder="8192,8,35"
+            value={llamaCppCtxSize}
+            onChange={setLlamaCppCtxSize}
+            onSubmit={handleLlamaCppParamsSubmit}
+            columns={100}
+            cursorOffset={llamaCppParamsCursorOffset}
+            onChangeCursorOffset={setLlamaCppParamsCursorOffset}
+            showCursor={true}
+          />
+          <Text dimColor>Press Enter to continue or Esc to go back</Text>
+        </Box>
+      </Box>
+    )
+  }
+
   if (currentScreen === 'baseUrl') {
     const isCustomOpenAI = selectedProvider === 'custom-openai'
 
@@ -2316,6 +2878,12 @@ export function ModelSelector({
                     Default is http://localhost:11434/v1 for local Ollama
                     installations.
                   </>
+                ) : selectedProvider === 'llama-cpp' ? (
+                  <>
+                    This is the OpenAI-compatible URL of your llama-server.
+                    <Newline />
+                    Default is http://127.0.0.1:8080/v1.
+                  </>
                 ) : (
                   <>
                     This is the base URL for the {providerName} API.
@@ -2358,7 +2926,9 @@ export function ModelSelector({
                 <Text color={theme.success}>
                   {selectedProvider === 'ollama'
                     ? 'Connecting to Ollama server...'
-                    : `Connecting to ${providerName}...`}
+                    : selectedProvider === 'llama-cpp'
+                      ? 'Connecting to llama.cpp server...'
+                      : `Connecting to ${providerName}...`}
                 </Text>
               </Box>
             )}
@@ -2460,7 +3030,19 @@ export function ModelSelector({
       description = `Enter the model name for ${modelTypeText}:`
       examples = 'Enter the exact model name as supported by your API endpoint.'
       placeholder = 'model-name'
+    } else if (selectedProvider === 'llama-cpp') {
+      screenTitle = 'llama.cpp Model Setup'
+      description = `Select the llama.cpp model for ${modelTypeText}:`
+      examples = 'Use the model returned by /v1/models or the GGUF filename.'
+      placeholder = 'model.gguf'
     }
+
+    const selectableModelOptions = availableModels
+      .filter(model => typeof model.model === 'string' && model.model.trim())
+      .map(model => ({
+        label: model.model,
+        value: model.model,
+      }))
 
     return (
       <Box flexDirection="column" gap={1}>
@@ -2508,31 +3090,66 @@ export function ModelSelector({
               </Text>
             </Box>
 
-            <Box>
-              <TextInput
-                placeholder={placeholder}
-                value={customModelName}
-                onChange={setCustomModelName}
-                onSubmit={handleCustomModelSubmit}
-                columns={100}
-                cursorOffset={customModelNameCursorOffset}
-                onChangeCursorOffset={setCustomModelNameCursorOffset}
-                showCursor={true}
-              />
-            </Box>
+            {!preferManualModelInput && selectableModelOptions.length > 0 ? (
+              <Box flexDirection="column" gap={1}>
+                <Text bold>Select from available models:</Text>
+                <Select
+                  options={[
+                    ...selectableModelOptions,
+                    { label: 'Enter model manually...', value: '__manual__' },
+                  ]}
+                  defaultValue={selectedModel || customModelName}
+                  onChange={value => {
+                    if (value === '__manual__') {
+                      setPreferManualModelInput(true)
+                      return
+                    }
+                    handleModelSelection(value)
+                  }}
+                  visibleOptionCount={12}
+                />
+              </Box>
+            ) : (
+              <Box>
+                <TextInput
+                  placeholder={placeholder}
+                  value={customModelName}
+                  onChange={setCustomModelName}
+                  onSubmit={handleCustomModelSubmit}
+                  columns={100}
+                  cursorOffset={customModelNameCursorOffset}
+                  onChangeCursorOffset={setCustomModelNameCursorOffset}
+                  showCursor={true}
+                />
+              </Box>
+            )}
 
             <Box marginTop={1}>
               <Text>
-                <Text color={theme.suggestion} dimColor={!customModelName}>
-                  [Submit Model Name]
-                </Text>
-                <Text> - Press Enter or click to continue</Text>
+                {preferManualModelInput ||
+                selectableModelOptions.length === 0 ? (
+                  <>
+                    <Text color={theme.suggestion} dimColor={!customModelName}>
+                      [Submit Model Name]
+                    </Text>
+                    <Text> - Press Enter or click to continue</Text>
+                  </>
+                ) : (
+                  <>
+                    <Text color={theme.suggestion}>[Select Model]</Text>
+                    <Text> - Use arrows and Enter to continue</Text>
+                  </>
+                )}
               </Text>
             </Box>
 
             <Box marginTop={1}>
               <Text dimColor>
-                Press <Text color={theme.suggestion}>Enter</Text> to continue or{' '}
+                Press <Text color={theme.suggestion}>Tab</Text> to{' '}
+                {preferManualModelInput
+                  ? 'switch to list selection'
+                  : 'switch to manual input'}
+                , <Text color={theme.suggestion}>Enter</Text> to continue or{' '}
                 <Text color={theme.suggestion}>Esc</Text> to go back
               </Text>
             </Box>
@@ -2700,8 +3317,18 @@ export function ModelSelector({
 
             <Box marginTop={1}>
               <Text dimColor>
-                Press <Text color={theme.suggestion}>Esc</Text> to go back to
-                context length
+                {selectedProvider === 'custom-openai' ? (
+                  <>
+                    Press <Text color={theme.suggestion}>Enter</Text> to
+                    continue anyway or <Text color={theme.suggestion}>Esc</Text>{' '}
+                    to go back
+                  </>
+                ) : (
+                  <>
+                    Press <Text color={theme.suggestion}>Esc</Text> to go back
+                    to context length
+                  </>
+                )}
               </Text>
             </Box>
           </Box>
@@ -2711,7 +3338,6 @@ export function ModelSelector({
   }
 
   if (currentScreen === 'confirmation') {
-
     const providerDisplayName = getProviderLabel(selectedProvider, 0).split(
       ' (',
     )[0]
@@ -2769,6 +3395,25 @@ export function ModelSelector({
                   <Text bold>Server URL: </Text>
                   <Text color={theme.suggestion}>{ollamaBaseUrl}</Text>
                 </Text>
+              )}
+
+              {selectedProvider === 'llama-cpp' && (
+                <>
+                  <Text>
+                    <Text bold>Mode: </Text>
+                    <Text color={theme.suggestion}>{llamaCppMode}</Text>
+                  </Text>
+                  <Text>
+                    <Text bold>Server URL: </Text>
+                    <Text color={theme.suggestion}>{providerBaseUrl}</Text>
+                  </Text>
+                  {llamaCppMode === 'managed' && (
+                    <Text>
+                      <Text bold>GGUF: </Text>
+                      <Text color={theme.suggestion}>{llamaCppModelPath}</Text>
+                    </Text>
+                  )}
+                </>
               )}
 
               {selectedProvider === 'custom-openai' && (

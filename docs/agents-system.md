@@ -102,7 +102,7 @@ Create a file `~/.kode/agents/api-designer.md`:
 name: api-designer
 description: "Designs RESTful APIs and GraphQL schemas with best practices"
 tools: ["FileRead", "FileWrite", "Grep"]
-model_name: reasoning
+model_name: compact
 ---
 
 You are an API design specialist. Your expertise includes:
@@ -149,7 +149,7 @@ Specify which AI model the agent should use:
 ```yaml
 model_name: quick      # Fast responses for simple tasks
 model_name: main       # Default model for general tasks  
-model_name: reasoning  # Complex analysis and design
+model_name: compact    # Context compaction / analysis handoff
 ```
 
 
@@ -182,7 +182,7 @@ mkdir -p ~/.kode/agents  # User-wide
 4. **Model Choice**: 
    - Use `quick` for simple, fast operations
    - Use `main` for general coding tasks
-   - Use `reasoning` for complex analysis
+   - Use `compact` when the task should prefer the compact-model pointer
 
 5. **Organization**: 
    - Keep user agents for personal workflows

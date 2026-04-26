@@ -109,10 +109,24 @@ export type ProviderType =
   | 'groq'
   | 'gemini'
   | 'ollama'
+  | 'llama-cpp'
   | 'azure'
   | 'custom'
   | 'custom-openai'
   | (string & {})
+
+export type LlamaCppRuntimeConfig = {
+  mode?: 'existing' | 'managed'
+  binaryPath?: string
+  modelPath?: string
+  host?: string
+  port?: number
+  ctxSize?: number
+  threads?: number
+  gpuLayers?: number
+  extraArgs?: string[]
+  autoStart?: boolean
+}
 
 export type ModelProfile = {
   name: string
@@ -129,6 +143,7 @@ export type ModelProfile = {
   isGPT5?: boolean
   validationStatus?: 'valid' | 'needs_repair' | 'auto_repaired'
   lastValidation?: number
+  llamaCpp?: LlamaCppRuntimeConfig
 }
 
 export type ModelPointerType = 'main' | 'task' | 'compact' | 'quick'
@@ -175,6 +190,7 @@ export type GlobalConfig = {
   modelPointers?: ModelPointers
   defaultModelName?: string
   lastDismissedUpdateVersion?: string
+  shiftEnterKeyBindingInstalled?: boolean
 }
 
 export const GLOBAL_CONFIG_KEYS = [

@@ -63,7 +63,6 @@ import {
   createAssistantMessage,
 } from '@utils/messages'
 import { getReplStaticPrefixLength } from '@utils/terminal/replStaticSplit'
-import { getModelManager, ModelManager } from '@utils/model'
 import { clearTerminal, updateTerminalTitle } from '@utils/terminal'
 import { BinaryFeedback } from '@components/binary-feedback/BinaryFeedback'
 import { getMaxThinkingTokens } from '@utils/model/thinking'
@@ -88,6 +87,7 @@ type Props = {
   isDefaultModel?: boolean
   initialUpdateVersion?: string | null
   initialUpdateCommands?: string[] | null
+  sessionModel?: string
 }
 
 export type BinaryFeedbackContext = {
@@ -112,6 +112,7 @@ export function REPL({
   isDefaultModel = true,
   initialUpdateVersion,
   initialUpdateCommands,
+  sessionModel,
 }: Props): React.ReactNode {
   const [verboseConfig] = useState(
     () => verboseFromCLI ?? getGlobalConfig().verbose,
@@ -214,7 +215,6 @@ export function REPL({
     }
   }, [messages, showCostDialog, haveShownCostDialog])
 
-
   const canUseTool = useCanUseTool(setToolUseConfirm)
 
   async function onInit() {
@@ -229,7 +229,6 @@ export function REPL({
     const newAbortController = new AbortController()
     setAbortController(newAbortController)
 
-    const model = new ModelManager(getGlobalConfig()).getModelName('main')
     const newMessages = await processUserInput(
       initialPrompt,
       'prompt',
@@ -271,13 +270,11 @@ export function REPL({
         return
       }
 
-      const [systemPrompt, context, model, maxThinkingTokens] =
-        await Promise.all([
-          getSystemPrompt({ disableSlashCommands }),
-          getContext(),
-          new ModelManager(getGlobalConfig()).getModelName('main'),
-          getMaxThinkingTokens([...messages, ...newMessages]),
-        ])
+      const [systemPrompt, context, maxThinkingTokens] = await Promise.all([
+        getSystemPrompt({ disableSlashCommands }),
+        getContext(),
+        getMaxThinkingTokens([...messages, ...newMessages]),
+      ])
 
       for await (const message of query(
         [...messages, ...newMessages],
@@ -294,6 +291,7 @@ export function REPL({
             verbose,
             safeMode,
             maxThinkingTokens,
+            model: sessionModel || undefined,
             toolPermissionContext: getToolPermissionContextForConversationKey({
               conversationKey: `${messageLogName}:${forkNumber}`,
               isBypassPermissionsModeAvailable: !(safeMode ?? false),
@@ -352,14 +350,11 @@ export function REPL({
       return
     }
 
-    const [systemPrompt, context, model, maxThinkingTokens] = await Promise.all(
-      [
-        getSystemPrompt({ disableSlashCommands }),
-        getContext(),
-        new ModelManager(getGlobalConfig()).getModelName('main'),
-        getMaxThinkingTokens([...messages, lastMessage]),
-      ],
-    )
+    const [systemPrompt, context, maxThinkingTokens] = await Promise.all([
+      getSystemPrompt({ disableSlashCommands }),
+      getContext(),
+      getMaxThinkingTokens([...messages, lastMessage]),
+    ])
 
     let lastAssistantMessage: MessageType | null = null
 
@@ -378,6 +373,7 @@ export function REPL({
           verbose,
           safeMode,
           maxThinkingTokens,
+          model: sessionModel || undefined,
           isKodingRequest: isKodingRequest || undefined,
           toolPermissionContext: getToolPermissionContextForConversationKey({
             conversationKey: `${messageLogName}:${forkNumber}`,

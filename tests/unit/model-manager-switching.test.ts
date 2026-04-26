@@ -150,4 +150,29 @@ describe('ModelManager model switching', () => {
     expect(config.modelPointers.main).toBe(modelA.modelName)
     expect(result.message).toContain('Keeping')
   })
+
+  test('reasoning alias resolves to compact pointer', () => {
+    const modelA = makeProfile({
+      name: 'Model A',
+      modelName: 'model-a',
+      contextLength: 128_000,
+      createdAt: 1,
+    })
+
+    const config: any = {
+      modelProfiles: [modelA],
+      modelPointers: {
+        main: modelA.modelName,
+        task: modelA.modelName,
+        compact: modelA.modelName,
+        quick: modelA.modelName,
+      },
+      defaultModelName: modelA.modelName,
+    }
+
+    const manager = new ModelManager(config)
+    const resolved = manager.resolveModelWithInfo('reasoning' as any)
+    expect(resolved.success).toBe(true)
+    expect(resolved.profile?.modelName).toBe(modelA.modelName)
+  })
 })

@@ -1,4 +1,8 @@
 import { fetchCustomModels } from '@services/openai'
+import {
+  fetchLlamaCppModels as fetchLlamaCppRuntimeModels,
+  LLAMA_CPP_DEFAULT_API_KEY,
+} from '@services/ai/llamaCppRuntime'
 import { debug as debugLogger } from '@utils/log/debugLogger'
 
 import type { ModelInfo } from './types'
@@ -214,6 +218,42 @@ export async function fetchKimiModels({
     }
 
     setModelLoadError(errorMessage)
+    throw error
+  }
+}
+
+export async function fetchLlamaCppModels({
+  apiKey,
+  baseURL,
+  setModelLoadError,
+}: {
+  apiKey?: string
+  baseURL: string
+  setModelLoadError: SetModelLoadError
+}): Promise<ModelInfo[]> {
+  try {
+    const models = await fetchLlamaCppRuntimeModels(
+      baseURL,
+      apiKey || LLAMA_CPP_DEFAULT_API_KEY,
+    )
+    return models.map((model: any) => ({
+      model:
+        model.modelName || model.id || model.name || model.model || 'default',
+      provider: 'llama-cpp',
+      max_tokens: model.max_tokens || model.context_length || 8192,
+      context_length: model.context_length || model.n_ctx || 8192,
+      supports_vision: Boolean(model.multimodal || model.supports_vision),
+      supports_function_calling: Boolean(model.supports_function_calling),
+      supports_reasoning_effort: false,
+    }))
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : 'Failed to fetch models from llama.cpp server'
+    setModelLoadError(
+      `${message}\n\nTip: start llama-server or choose managed local mode with a valid GGUF model.`,
+    )
     throw error
   }
 }
@@ -550,14 +590,14 @@ export async function fetchGeminiModels({
   apiKey: string
   setModelLoadError: SetModelLoadError
 }): Promise<ModelInfo[]> {
-	  try {
-	    const response = await fetch(
-	      `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`,
-	    )
+  try {
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`,
+    )
 
-	    if (!response.ok) {
-	      const errorData = await response.json()
-	      throw new Error(
+    if (!response.ok) {
+      const errorData = await response.json()
+      throw new Error(
         errorData.error?.message || `API error: ${response.status}`,
       )
     }

@@ -3,6 +3,7 @@ export type {
   AutoUpdaterStatus,
   GlobalConfig,
   GlobalConfigKey,
+  LlamaCppRuntimeConfig,
   McpHttpServerConfig,
   McpSSEIdeServerConfig,
   McpSSEServerConfig,
@@ -60,4 +61,8 @@ export {
   validateAndRepairAllGPT5Profiles,
   validateAndRepairGPT5Profile,
 } from './validator'
-
+export {
+  applyCliModelSettings,
+  type ApplyCliModelSettingsInput,
+  type ApplyCliModelSettingsResult,
+} from './modelSettings'

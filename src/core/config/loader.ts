@@ -195,11 +195,7 @@ let configReadingAllowed = false
 
 export function enableConfigs(): void {
   configReadingAllowed = true
-  getConfig(
-    getGlobalConfigFilePath(),
-    DEFAULT_GLOBAL_CONFIG,
-    true,
-  )
+  getConfig(getGlobalConfigFilePath(), DEFAULT_GLOBAL_CONFIG, true)
 }
 
 function getConfig<A>(
@@ -258,7 +254,8 @@ function getConfig<A>(
       debugLogger.error('CONFIG_JSON_PARSE_ERROR', {
         file,
         errorMessage,
-        errorType: error instanceof Error ? error.constructor.name : typeof error,
+        errorType:
+          error instanceof Error ? error.constructor.name : typeof error,
         contentLength: String(fileContent.length),
       })
 
@@ -272,6 +269,12 @@ function getConfig<A>(
         errorMessage: error.message,
       })
       throw error
+    }
+
+    if (error instanceof ConfigParseError) {
+      process.stderr.write(
+        `Warning: Invalid config JSON at ${file}. Falling back to defaults. (${error.message})\n`,
+      )
     }
 
     debugLogger.warn('CONFIG_FALLBACK_TO_DEFAULT', {

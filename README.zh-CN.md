@@ -163,7 +163,7 @@ Kode 同时使用 `~/.kode` 目录（存放额外数据，如内存文件）和 
 - **模型指针（Model Pointers）**：用户可以在 `/model` 命令中配置不同用途的默认模型：
   - `main`：主 Agent 的默认模型
   - `task`：SubAgent 的默认模型
-  - `reasoning`：预留给未来 ThinkTool 使用
+  - `compact`：上下文压缩时使用的模型
   - `quick`：用于简单 NLP 任务（如安全性识别、生成标题描述等）的快速模型
 - **动态模型切换**：支持运行时切换模型，无需重启会话，保持上下文连续性
 
@@ -234,16 +234,15 @@ Kode 同时使用 `~/.kode` 目录（存放额外数据，如内存文件）和 
 ```typescript
 // 支持多模型配置的示例
 {
-  "modelProfiles": {
-    "o3": { "provider": "openai", "model": "o3", "apiKey": "..." },
-    "claude4": { "provider": "anthropic", "model": "claude-sonnet-4", "apiKey": "..." },
-    "qwen": { "provider": "alibaba", "model": "qwen-coder", "apiKey": "..." }
-  },
+  "modelProfiles": [
+    { "name": "o3", "provider": "openai", "modelName": "o3", "apiKey": "...", "maxTokens": 8192, "contextLength": 200000, "isActive": true, "createdAt": 1710000000000 },
+    { "name": "claude4", "provider": "anthropic", "modelName": "claude-sonnet-4-20250514", "apiKey": "...", "maxTokens": 8192, "contextLength": 200000, "isActive": true, "createdAt": 1710000001000 }
+  ],
   "modelPointers": {
-    "main": "claude4",      // 主对话模型
-    "task": "qwen",         // 任务执行模型
-    "reasoning": "o3",      // 推理模型
-    "quick": "glm-4.5"      // 快速响应模型
+    "main": "claude-sonnet-4-20250514", // 主对话模型
+    "task": "o3",                        // 任务执行模型
+    "compact": "o3",                     // 上下文压缩模型
+    "quick": "o3"                        // 快速响应模型
   }
 }
 ```

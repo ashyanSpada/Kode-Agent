@@ -206,6 +206,7 @@ export async function runPrintMode({
       safeMode: safe,
       initialMessages,
       persistSession: sessionPersistence !== false,
+      model,
     })
     process.stdout.write(`${response}\n`)
     process.exit(0)
@@ -467,7 +468,6 @@ export async function runPrintMode({
 
     process.exit(0)
   }
-
 
   const abortController = new AbortController()
   const userMsg = await (async () => {

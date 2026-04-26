@@ -17,6 +17,7 @@ export function ModelListManager({ onClose }: Props): React.ReactNode {
   const theme = getTheme()
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [showModelSelector, setShowModelSelector] = useState(false)
+  const [editingModelName, setEditingModelName] = useState<string | null>(null)
   const [isDeleteMode, setIsDeleteMode] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
   const exitState = useExitOnCtrlCD(onClose)
@@ -66,6 +67,12 @@ export function ModelListManager({ onClose }: Props): React.ReactNode {
   }
 
   const handleAddNewModel = () => {
+    setEditingModelName(null)
+    setShowModelSelector(true)
+  }
+
+  const handleEditModel = (modelName: string) => {
+    setEditingModelName(modelName)
     setShowModelSelector(true)
   }
 
@@ -103,6 +110,8 @@ export function ModelListManager({ onClose }: Props): React.ReactNode {
           handleDeleteModel(item.id)
         } else if (item.type === 'action') {
           handleAddNewModel()
+        } else if (!isDeleteMode && item.type === 'model') {
+          handleEditModel(item.id)
         }
       }
     },
@@ -118,6 +127,7 @@ export function ModelListManager({ onClose }: Props): React.ReactNode {
         onCancel={handleModelConfigurationComplete}
         skipModelType={true}
         isOnboarding={false}
+        editingModelName={editingModelName || undefined}
         abortController={new AbortController()}
       />
     )
@@ -147,7 +157,7 @@ export function ModelListManager({ onClose }: Props): React.ReactNode {
             )
           ) : (
             <>
-              Navigate: ↑↓ | Select: Enter |{' '}
+              Navigate: ↑↓ | Select: Enter (add/edit) |{' '}
               <Text bold color="red">
                 Delete: d
               </Text>{' '}
@@ -236,6 +246,7 @@ export function ModelListManager({ onClose }: Props): React.ReactNode {
           ) : (
             <>
               Use ↑/↓ to navigate,{' '}
+              <Text color={theme.suggestion}>Enter to add/edit, </Text>
               <Text bold color="red">
                 d to delete model
               </Text>

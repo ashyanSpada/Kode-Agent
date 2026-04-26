@@ -11,9 +11,9 @@ Kode 使用复杂的多级配置系统，允许在全局、项目和运行时级
            ↓
     运行时标志 (CLI)
            ↓
-  项目配置 (./.claude/config.json)
+  项目设置 (./.kode/settings.json)
            ↓
-   全局配置 (~/.claude/config.json)
+ 全局配置（默认 ~/.kode.json）
            ↓
       默认值（最低优先级）
 ```
@@ -21,24 +21,31 @@ Kode 使用复杂的多级配置系统，允许在全局、项目和运行时级
 ## 配置文件
 
 ### 全局配置
-**位置**：`~/.claude/config.json`
+**位置**：
+- 默认：`~/.kode.json`
+- 若设置 `KODE_CONFIG_DIR` 或 `CLAUDE_CONFIG_DIR`：`<该目录>/config.json`
 
 ```json
 {
   "theme": "dark",
   "hasCompletedOnboarding": true,
-  "modelProfiles": {
-    "default": {
-      "type": "anthropic",
-      "model": "claude-3-5-sonnet-20241022",
-      "maxTokens": 8192
+  "modelProfiles": [
+    {
+      "name": "Claude Sonnet",
+      "provider": "anthropic",
+      "modelName": "claude-sonnet-4-20250514",
+      "apiKey": "***",
+      "maxTokens": 8192,
+      "contextLength": 200000,
+      "isActive": true,
+      "createdAt": 1710000000000
     }
-  },
+  ],
   "modelPointers": {
-    "main": "default",
-    "task": "fast",
-    "reasoning": "smart",
-    "quick": "quick"
+    "main": "claude-sonnet-4-20250514",
+    "task": "claude-sonnet-4-20250514",
+    "compact": "claude-sonnet-4-20250514",
+    "quick": "claude-sonnet-4-20250514"
   },
   "mcpServers": {},
   "customApiKey": null,
@@ -47,8 +54,8 @@ Kode 使用复杂的多级配置系统，允许在全局、项目和运行时级
 }
 ```
 
-### 项目配置
-**位置**：`./.claude/config.json`
+### 项目设置
+**位置**：`./.kode/settings.json`（本地覆盖在 `./.kode/settings.local.json`）
 
 ```json
 {
@@ -82,17 +89,15 @@ Kode 使用复杂的多级配置系统，允许在全局、项目和运行时级
 
 ```typescript
 interface ModelProfile {
-  id: string
   name: string
-  provider: 'anthropic' | 'openai' | 'custom'
-  config: {
-    model: string
-    baseURL?: string
-    apiKey?: string
-    maxTokens?: number
-    temperature?: number
-    headers?: Record<string, string>
-  }
+  provider: string
+  modelName: string
+  baseURL?: string
+  apiKey: string
+  maxTokens: number
+  contextLength: number
+  isActive: boolean
+  createdAt: number
 }
 ```
 
@@ -103,7 +108,7 @@ interface ModelProfile {
 interface ModelPointers {
   main: string      // 主要对话模型
   task: string      // 任务执行模型
-  reasoning: string // 复杂推理模型
+  compact: string   // 上下文压缩模型
   quick: string     // 快速响应模型
 }
 ```
@@ -201,17 +206,18 @@ saveCurrentProjectConfig({
 ### CLI 配置命令
 
 ```bash
-# 获取配置值
+# 获取配置值（仅限白名单键）
 kode config get theme
-kode config get -g modelProfiles.default.model
+kode config get -g primaryProvider
 
 # 设置配置值
 kode config set theme dark
 kode config set -g autoUpdaterStatus enabled
 
-# 删除配置值
-kode config remove customApiKey
-kode config remove -g mcpServers.myserver
+# 管理模型（配置文件与指针）
+kode models list
+kode models set-pointer main my-profile
+kode models add-profile --name my-profile --provider openai --model-name gpt-4.1 --api-key "$OPENAI_API_KEY"
 
 # 列出所有配置
 kode config list
@@ -228,9 +234,13 @@ kode config list -g
 # API 密钥
 OPENAI_API_KEY=sk-...
 
-# 模型选择
-CLAUDE_MODEL=claude-3-5-sonnet-20241022
-DEFAULT_MODEL_PROFILE=fast
+# 配置路径覆盖
+KODE_CONFIG_DIR=/path/to/kode-config
+CLAUDE_CONFIG_DIR=/path/to/compat-config
+
+# Provider 路由开关
+KODE_USE_BEDROCK=1
+KODE_USE_VERTEX=1
 
 # 功能标志
 ENABLE_ARCHITECT_TOOL=true
@@ -313,7 +323,7 @@ function saveConfigWithBackup(config: Config) {
 ```typescript
 const ConfigSchema = z.object({
   theme: z.enum(['dark', 'light']).optional(),
-  modelProfiles: z.record(ModelProfileSchema).optional(),
+  modelProfiles: z.array(ModelProfileSchema).optional(),
   modelPointers: ModelPointersSchema.optional(),
   mcpServers: z.record(MCPServerConfigSchema).optional(),
   // ... 其他字段
@@ -363,21 +373,93 @@ function loadConfig(path: string): Config {
 
 ```json
 {
-  "modelProfiles": {
-    "custom-llm": {
-      "type": "custom",
-      "name": "我的自定义 LLM",
-      "config": {
-        "baseURL": "https://my-llm-api.com",
-        "apiKey": "custom-key",
-        "model": "my-model-v1",
-        "headers": {
-          "X-Custom-Header": "value"
-        }
+  "modelProfiles": [
+    {
+      "name": "custom-llm",
+      "provider": "custom-openai",
+      "modelName": "my-model-v1",
+      "baseURL": "https://my-llm-api.com/v1",
+      "apiKey": "custom-key",
+      "maxTokens": 4096,
+      "contextLength": 128000,
+      "isActive": true,
+      "createdAt": 1710000000000
+    }
+  ]
+}
+```
+
+### llama.cpp 提供商
+
+Kode 可以连接到已运行的 `llama-server`，也可以为 GGUF 模型托管本地
+`llama-server` 进程。两种模式都使用 llama.cpp 的 OpenAI 兼容端点
+（`/v1/models` 和 `/v1/chat/completions`）。
+
+已运行服务配置：
+
+```json
+{
+  "modelProfiles": [
+    {
+      "name": "Local llama.cpp",
+      "provider": "llama-cpp",
+      "modelName": "model.gguf",
+      "baseURL": "http://127.0.0.1:8080/v1",
+      "apiKey": "no-key",
+      "maxTokens": 8192,
+      "contextLength": 8192,
+      "isActive": true,
+      "createdAt": 1710000000000,
+      "llamaCpp": {
+        "mode": "existing",
+        "host": "127.0.0.1",
+        "port": 8080,
+        "autoStart": false
       }
     }
-  }
+  ]
 }
+```
+
+托管本地服务配置：
+
+```json
+{
+  "modelProfiles": [
+    {
+      "name": "Managed llama.cpp",
+      "provider": "llama-cpp",
+      "modelName": "mistral.Q4_K_M.gguf",
+      "baseURL": "http://127.0.0.1:8080/v1",
+      "apiKey": "no-key",
+      "maxTokens": 8192,
+      "contextLength": 8192,
+      "isActive": true,
+      "createdAt": 1710000000000,
+      "llamaCpp": {
+        "mode": "managed",
+        "binaryPath": "/usr/local/bin/llama-server",
+        "modelPath": "/models/mistral.Q4_K_M.gguf",
+        "host": "127.0.0.1",
+        "port": 8080,
+        "ctxSize": 8192,
+        "threads": 8,
+        "gpuLayers": 35,
+        "extraArgs": ["--parallel", "2"],
+        "autoStart": true
+      }
+    }
+  ]
+}
+```
+
+CLI 辅助命令：
+
+```bash
+kode models llama-cpp status
+kode models llama-cpp start --binary /usr/local/bin/llama-server --gguf /models/model.gguf
+kode models llama-cpp stop
+kode models llama-cpp add-profile --name "Local llama.cpp" --binary /usr/local/bin/llama-server --gguf /models/model.gguf --ctx-size 8192 --threads 8 --gpu-layers 35
 ```
 
 ### MCP 服务器示例
@@ -474,11 +556,8 @@ function loadConfig(path: string): Config {
 # 显示配置
 kode config list
 
-# 重置为默认值
-kode config reset
-
-# 显示配置路径
-kode config paths
+# 显示模型诊断信息（包含配置路径）
+kode models list
 ```
 
 配置系统提供灵活、安全和强大的所有 Kode 设置管理，同时保持向后兼容性和用户友好的默认值。

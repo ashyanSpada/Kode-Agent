@@ -24,6 +24,7 @@ import {
   listConfigForCLI,
   enableConfigs,
   validateAndRepairAllGPT5Profiles,
+  applyCliModelSettings,
 } from '@utils/config'
 import { cwd } from 'process'
 import { dateToFilename, logError, parseLogFilename } from '@utils/log'
@@ -38,7 +39,7 @@ import {
 import { LogList } from '@screens/LogList'
 import { ResumeConversation } from '@screens/ResumeConversation'
 import { startMCPServer } from '../mcp'
-import { env } from '@utils/config/env'
+import { env, getGlobalConfigFilePath } from '@utils/config/env'
 import { getCwd } from '@utils/state'
 import { getNextAvailableLogForkNumber, loadLogList } from '@utils/log'
 import { loadMessagesFromLog } from '@utils/session/conversationRecovery'
@@ -74,6 +75,13 @@ import { showInvalidConfigDialog } from '@components/InvalidConfigDialog'
 import { ConfigParseError } from '@utils/text/errors'
 import { MACRO } from '@constants/macros'
 import { clearOutputStyleCache } from '@services/outputStyles'
+import {
+  ensureLlamaCppRuntime,
+  getLlamaCppBaseURL,
+  getLlamaCppStatus,
+  LLAMA_CPP_DEFAULT_API_KEY,
+  stopLlamaCppRuntime,
+} from '@services/ai/llamaCppRuntime'
 
 function logStartup(): void {
   const config = getGlobalConfig()
@@ -113,7 +121,6 @@ export async function runCli() {
       return
     }
   }
-
 
   let inputPrompt = ''
   let renderContext: RenderOptions | undefined = {
@@ -387,6 +394,7 @@ async function parseArgs(
           addDir,
           strictMcpConfig,
           agents,
+          settings,
           settingSources,
           resume,
           continue: continueConversation,
@@ -412,6 +420,38 @@ async function parseArgs(
         await showSetupScreens(safe, print)
 
         assertMinVersion()
+
+        let effectiveModelOverride =
+          typeof model === 'string' && model.trim() ? model.trim() : undefined
+        if (
+          (typeof settings === 'string' && settings.trim()) ||
+          effectiveModelOverride
+        ) {
+          try {
+            const settingsResult = applyCliModelSettings({
+              config: getGlobalConfig(),
+              cwd,
+              modelOverride: effectiveModelOverride,
+              settingsOption:
+                typeof settings === 'string' ? settings.trim() : undefined,
+            })
+            effectiveModelOverride = settingsResult.effectiveModelOverride
+            if (settingsResult.changed) {
+              saveGlobalConfig(settingsResult.nextConfig)
+              await import('@utils/model').then(({ reloadModelManager }) => {
+                reloadModelManager()
+              })
+            }
+            if (settingsResult.warnings.length > 0) {
+              for (const warning of settingsResult.warnings) {
+                console.warn(`Warning: ${warning}`)
+              }
+            }
+          } catch (error) {
+            console.error((error as Error).message)
+            process.exit(1)
+          }
+        }
 
         {
           const requested =
@@ -589,7 +629,7 @@ async function parseArgs(
             permissionMode,
             dangerouslySkipPermissions,
             allowDangerouslySkipPermissions,
-            model,
+            model: effectiveModelOverride,
             mcpClients,
           })
           return
@@ -686,6 +726,7 @@ async function parseArgs(
                 initialUpdateVersion={updateInfo.version}
                 initialUpdateCommands={updateInfo.commands}
                 initialMessages={initialMessages}
+                sessionModel={effectiveModelOverride}
               />,
               renderContext,
             )
@@ -694,7 +735,6 @@ async function parseArgs(
       },
     )
     .version(MACRO.VERSION, '-v, --version')
-
 
   const config = program
     .command('config')
@@ -754,6 +794,33 @@ async function parseArgs(
       process.exit(0)
     })
 
+  const normalizePointerForCli = (
+    pointer: string,
+  ): 'main' | 'task' | 'compact' | 'quick' => {
+    const normalized = pointer.trim().toLowerCase()
+    if (normalized === 'reasoning') return 'compact'
+    if (['main', 'task', 'compact', 'quick'].includes(normalized)) {
+      return normalized as 'main' | 'task' | 'compact' | 'quick'
+    }
+    throw new Error(
+      `Invalid pointer '${pointer}'. Valid pointers are: main, task, compact, quick`,
+    )
+  }
+
+  const resolveProfileByRef = (
+    modelRef: string,
+    profiles: Array<{
+      name: string
+      modelName: string
+      isActive: boolean
+    }>,
+  ) => {
+    return (
+      profiles.find(profile => profile.modelName === modelRef) ??
+      profiles.find(profile => profile.name === modelRef) ??
+      null
+    )
+  }
 
   const modelsCmd = program
     .command('models')
@@ -822,10 +889,12 @@ async function parseArgs(
     .option('--json', 'Output as JSON')
     .action(async (options: any) => {
       try {
-        const workingDir = typeof options?.cwd === 'string' ? options.cwd : cwd()
+        const workingDir =
+          typeof options?.cwd === 'string' ? options.cwd : cwd()
         const asJson = options?.json === true
         await setup(workingDir, false)
-        const { reloadModelManager, getModelManager } = await import('@utils/model')
+        const { reloadModelManager, getModelManager } =
+          await import('@utils/model')
         reloadModelManager()
         const manager = getModelManager()
         const config = getGlobalConfig()
@@ -846,7 +915,7 @@ async function parseArgs(
                     isActive: profile.isActive,
                   }
                 : null,
-              error: resolved.success ? null : resolved.error ?? null,
+              error: resolved.success ? null : (resolved.error ?? null),
             }
           },
         )
@@ -864,16 +933,30 @@ async function parseArgs(
           lastUsed: typeof p.lastUsed === 'number' ? p.lastUsed : null,
           isGPT5: p.isGPT5 ?? null,
           validationStatus: p.validationStatus ?? null,
-          lastValidation: typeof p.lastValidation === 'number' ? p.lastValidation : null,
+          lastValidation:
+            typeof p.lastValidation === 'number' ? p.lastValidation : null,
           hasApiKey: Boolean(p.apiKey),
         }))
 
         if (asJson) {
-          console.log(JSON.stringify({ pointers, profiles }, null, 2))
+          console.log(
+            JSON.stringify(
+              {
+                configPath: getGlobalConfigFilePath(),
+                primaryProvider: config.primaryProvider ?? null,
+                pointers,
+                profiles,
+              },
+              null,
+              2,
+            ),
+          )
           process.exitCode = 0
           return
         }
 
+        console.log(`Model config file: ${getGlobalConfigFilePath()}`)
+        console.log(`Primary provider: ${config.primaryProvider ?? '(unset)'}`)
         console.log('Model pointers:\n')
         for (const ptr of pointers) {
           const resolvedLabel = ptr.resolved
@@ -885,7 +968,9 @@ async function parseArgs(
         }
 
         const active = profiles.filter(p => p.isActive)
-        console.log(`\nModel profiles (${active.length}/${profiles.length} active):\n`)
+        console.log(
+          `\nModel profiles (${active.length}/${profiles.length} active):\n`,
+        )
         for (const p of profiles.sort((a, b) => a.name.localeCompare(b.name))) {
           const status = p.isActive ? 'active' : 'inactive'
           console.log(`  - ${p.name} (${status})`)
@@ -902,66 +987,590 @@ async function parseArgs(
       }
     })
 
+  modelsCmd
+    .command('set-pointer <pointer> <model>')
+    .description('Set a model pointer (main, task, compact, quick)')
+    .option('--cwd <cwd>', 'The current working directory', String, cwd())
+    .action(async (pointer: string, modelRef: string, options: any) => {
+      try {
+        const workingDir =
+          typeof options?.cwd === 'string' ? options.cwd : cwd()
+        await setup(workingDir, false)
+        const normalizedPointer = normalizePointerForCli(pointer)
+        const config = getGlobalConfig()
+        const profiles = config.modelProfiles ?? []
+        const resolved = resolveProfileByRef(modelRef, profiles)
+        if (!resolved) {
+          throw new Error(
+            `Unknown model '${modelRef}'. Use 'kode models list' to inspect configured profiles.`,
+          )
+        }
+        saveGlobalConfig({
+          ...config,
+          modelPointers: {
+            ...(config.modelPointers ?? {
+              main: '',
+              task: '',
+              compact: '',
+              quick: '',
+            }),
+            [normalizedPointer]: resolved.modelName,
+          },
+        })
+        await import('@utils/model').then(({ reloadModelManager }) => {
+          reloadModelManager()
+        })
+        console.log(
+          `Set pointer '${normalizedPointer}' to '${resolved.name}' (${resolved.modelName})`,
+        )
+        process.exit(0)
+      } catch (error) {
+        console.error((error as Error).message)
+        process.exit(1)
+      }
+    })
+
+  modelsCmd
+    .command('clear-pointer <pointer>')
+    .description('Clear a model pointer assignment')
+    .option('--cwd <cwd>', 'The current working directory', String, cwd())
+    .action(async (pointer: string, options: any) => {
+      try {
+        const workingDir =
+          typeof options?.cwd === 'string' ? options.cwd : cwd()
+        await setup(workingDir, false)
+        const normalizedPointer = normalizePointerForCli(pointer)
+        const config = getGlobalConfig()
+        saveGlobalConfig({
+          ...config,
+          modelPointers: {
+            ...(config.modelPointers ?? {
+              main: '',
+              task: '',
+              compact: '',
+              quick: '',
+            }),
+            [normalizedPointer]: '',
+          },
+        })
+        await import('@utils/model').then(({ reloadModelManager }) => {
+          reloadModelManager()
+        })
+        console.log(`Cleared pointer '${normalizedPointer}'`)
+        process.exit(0)
+      } catch (error) {
+        console.error((error as Error).message)
+        process.exit(1)
+      }
+    })
+
+  modelsCmd
+    .command('add-profile')
+    .description('Add a model profile without using /model UI')
+    .option('--cwd <cwd>', 'The current working directory', String, cwd())
+    .requiredOption('--name <name>', 'Profile display name')
+    .requiredOption('--provider <provider>', 'Provider identifier')
+    .requiredOption('--model-name <modelName>', 'Provider model name')
+    .requiredOption('--api-key <apiKey>', 'API key')
+    .option('--base-url <baseURL>', 'Custom API base URL')
+    .option('--max-tokens <maxTokens>', 'Maximum output tokens', '8192')
+    .option('--context-length <contextLength>', 'Context window size', '128000')
+    .option('--reasoning-effort <effort>', 'Reasoning effort profile')
+    .option('--inactive', 'Mark profile as inactive')
+    .action(async (options: any) => {
+      try {
+        const workingDir =
+          typeof options?.cwd === 'string' ? options.cwd : cwd()
+        await setup(workingDir, false)
+        const config = getGlobalConfig()
+        const profiles = [...(config.modelProfiles ?? [])]
+        const name = String(options.name).trim()
+        const modelName = String(options.modelName).trim()
+        if (profiles.some(profile => profile.modelName === modelName)) {
+          throw new Error(`Model profile '${modelName}' already exists`)
+        }
+        if (profiles.some(profile => profile.name === name)) {
+          throw new Error(`Model profile name '${name}' already exists`)
+        }
+        const maxTokens = Number(options.maxTokens)
+        const contextLength = Number(options.contextLength)
+        if (!Number.isFinite(maxTokens) || maxTokens <= 0) {
+          throw new Error('--max-tokens must be a positive number')
+        }
+        if (!Number.isFinite(contextLength) || contextLength <= 0) {
+          throw new Error('--context-length must be a positive number')
+        }
+
+        profiles.push({
+          name,
+          provider: String(options.provider).trim() as any,
+          modelName,
+          apiKey: String(options.apiKey),
+          baseURL:
+            typeof options.baseUrl === 'string' && options.baseUrl.trim()
+              ? options.baseUrl.trim()
+              : undefined,
+          maxTokens,
+          contextLength,
+          reasoningEffort:
+            typeof options.reasoningEffort === 'string'
+              ? options.reasoningEffort
+              : undefined,
+          isActive: options.inactive === true ? false : true,
+          createdAt: Date.now(),
+        })
+
+        const pointers = {
+          ...(config.modelPointers ?? {
+            main: '',
+            task: '',
+            compact: '',
+            quick: '',
+          }),
+        }
+        if (!pointers.main) {
+          pointers.main = modelName
+          if (!pointers.task) pointers.task = modelName
+          if (!pointers.compact) pointers.compact = modelName
+          if (!pointers.quick) pointers.quick = modelName
+        }
+
+        saveGlobalConfig({
+          ...config,
+          modelProfiles: profiles,
+          modelPointers: pointers,
+          defaultModelName: config.defaultModelName || modelName,
+        })
+        await import('@utils/model').then(({ reloadModelManager }) => {
+          reloadModelManager()
+        })
+        console.log(`Added model profile '${name}' (${modelName})`)
+        process.exit(0)
+      } catch (error) {
+        console.error((error as Error).message)
+        process.exit(1)
+      }
+    })
+
+  modelsCmd
+    .command('update-profile <model>')
+    .description('Update fields for an existing model profile')
+    .option('--cwd <cwd>', 'The current working directory', String, cwd())
+    .option('--name <name>', 'Profile display name')
+    .option('--provider <provider>', 'Provider identifier')
+    .option('--model-name <modelName>', 'Provider model name')
+    .option('--api-key <apiKey>', 'API key')
+    .option('--base-url <baseURL>', 'Custom API base URL')
+    .option('--max-tokens <maxTokens>', 'Maximum output tokens')
+    .option('--context-length <contextLength>', 'Context window size')
+    .option('--reasoning-effort <effort>', 'Reasoning effort profile')
+    .option('--active', 'Mark profile as active')
+    .option('--inactive', 'Mark profile as inactive')
+    .action(async (modelRef: string, options: any) => {
+      try {
+        const workingDir =
+          typeof options?.cwd === 'string' ? options.cwd : cwd()
+        await setup(workingDir, false)
+        const config = getGlobalConfig()
+        const profiles = [...(config.modelProfiles ?? [])]
+        const current = resolveProfileByRef(modelRef, profiles)
+        if (!current) {
+          throw new Error(`Model profile '${modelRef}' not found`)
+        }
+        const index = profiles.findIndex(p => p.modelName === current.modelName)
+        if (index < 0) throw new Error(`Model profile '${modelRef}' not found`)
+
+        const next = { ...profiles[index] }
+        if (typeof options.name === 'string' && options.name.trim()) {
+          next.name = options.name.trim()
+        }
+        if (typeof options.provider === 'string' && options.provider.trim()) {
+          next.provider = options.provider.trim() as any
+        }
+        if (typeof options.modelName === 'string' && options.modelName.trim()) {
+          next.modelName = options.modelName.trim()
+        }
+        if (typeof options.apiKey === 'string') {
+          next.apiKey = options.apiKey
+        }
+        if (typeof options.baseUrl === 'string') {
+          next.baseURL = options.baseUrl.trim()
+            ? options.baseUrl.trim()
+            : undefined
+        }
+        if (typeof options.maxTokens === 'string') {
+          const maxTokens = Number(options.maxTokens)
+          if (!Number.isFinite(maxTokens) || maxTokens <= 0) {
+            throw new Error('--max-tokens must be a positive number')
+          }
+          next.maxTokens = maxTokens
+        }
+        if (typeof options.contextLength === 'string') {
+          const contextLength = Number(options.contextLength)
+          if (!Number.isFinite(contextLength) || contextLength <= 0) {
+            throw new Error('--context-length must be a positive number')
+          }
+          next.contextLength = contextLength
+        }
+        if (typeof options.reasoningEffort === 'string') {
+          next.reasoningEffort = options.reasoningEffort
+        }
+        if (options.active === true) next.isActive = true
+        if (options.inactive === true) next.isActive = false
+        profiles[index] = next
+
+        const previousModelName = current.modelName
+        const nextModelName = next.modelName
+        const pointers = {
+          ...(config.modelPointers ?? {
+            main: '',
+            task: '',
+            compact: '',
+            quick: '',
+          }),
+        }
+        if (previousModelName !== nextModelName) {
+          for (const pointerKey of [
+            'main',
+            'task',
+            'compact',
+            'quick',
+          ] as const) {
+            if (pointers[pointerKey] === previousModelName) {
+              pointers[pointerKey] = nextModelName
+            }
+          }
+        }
+
+        saveGlobalConfig({
+          ...config,
+          modelProfiles: profiles,
+          modelPointers: pointers,
+          defaultModelName:
+            config.defaultModelName === previousModelName
+              ? nextModelName
+              : config.defaultModelName,
+        })
+        await import('@utils/model').then(({ reloadModelManager }) => {
+          reloadModelManager()
+        })
+        console.log(
+          `Updated model profile '${current.name}' (${current.modelName})`,
+        )
+        process.exit(0)
+      } catch (error) {
+        console.error((error as Error).message)
+        process.exit(1)
+      }
+    })
+
+  modelsCmd
+    .command('remove-profile <model>')
+    .description('Remove a model profile by modelName or profile name')
+    .option('--cwd <cwd>', 'The current working directory', String, cwd())
+    .action(async (modelRef: string, options: any) => {
+      try {
+        const workingDir =
+          typeof options?.cwd === 'string' ? options.cwd : cwd()
+        await setup(workingDir, false)
+        const config = getGlobalConfig()
+        const profiles = [...(config.modelProfiles ?? [])]
+        const current = resolveProfileByRef(modelRef, profiles)
+        if (!current) {
+          throw new Error(`Model profile '${modelRef}' not found`)
+        }
+        const remaining = profiles.filter(
+          profile => profile.modelName !== current.modelName,
+        )
+        const fallbackModel =
+          remaining.find(profile => profile.isActive)?.modelName ?? ''
+        const pointers = {
+          ...(config.modelPointers ?? {
+            main: '',
+            task: '',
+            compact: '',
+            quick: '',
+          }),
+        }
+        for (const pointerKey of [
+          'main',
+          'task',
+          'compact',
+          'quick',
+        ] as const) {
+          if (pointers[pointerKey] === current.modelName) {
+            pointers[pointerKey] = fallbackModel
+          }
+        }
+
+        saveGlobalConfig({
+          ...config,
+          modelProfiles: remaining,
+          modelPointers: pointers,
+          defaultModelName:
+            config.defaultModelName === current.modelName
+              ? fallbackModel
+              : config.defaultModelName,
+        })
+        await import('@utils/model').then(({ reloadModelManager }) => {
+          reloadModelManager()
+        })
+        console.log(
+          `Removed model profile '${current.name}' (${current.modelName})`,
+        )
+        process.exit(0)
+      } catch (error) {
+        console.error((error as Error).message)
+        process.exit(1)
+      }
+    })
+
+  const llamaCppCmd = modelsCmd
+    .command('llama-cpp')
+    .description('Manage llama.cpp local server integration')
+
+  llamaCppCmd
+    .command('status')
+    .description('Show managed llama.cpp runtime status')
+    .action(async () => {
+      try {
+        const status = await getLlamaCppStatus()
+        console.log(`llama.cpp: ${status.running ? 'running' : 'stopped'}`)
+        console.log(`  managed: ${status.managed ? 'yes' : 'no'}`)
+        console.log(`  baseURL: ${status.baseURL}`)
+        if (status.pid) console.log(`  pid: ${status.pid}`)
+        if (status.modelPath) console.log(`  modelPath: ${status.modelPath}`)
+        if (status.error) console.log(`  error: ${status.error}`)
+        process.exit(0)
+      } catch (error) {
+        console.error((error as Error).message)
+        process.exit(1)
+      }
+    })
+
+  llamaCppCmd
+    .command('stop')
+    .description('Stop the managed llama.cpp runtime started by Kode')
+    .action(async () => {
+      try {
+        const stopped = await stopLlamaCppRuntime()
+        console.log(
+          stopped
+            ? 'Stopped managed llama.cpp runtime'
+            : 'No managed llama.cpp runtime found',
+        )
+        process.exit(0)
+      } catch (error) {
+        console.error((error as Error).message)
+        process.exit(1)
+      }
+    })
+
+  const addLlamaCppRuntimeOptions = (command: Command) =>
+    command
+      .option('--cwd <cwd>', 'The current working directory', String, cwd())
+      .requiredOption('--binary <path>', 'Path to llama-server binary')
+      .requiredOption('--gguf <path>', 'Path to GGUF model file')
+      .option('--host <host>', 'Host for llama-server', '127.0.0.1')
+      .option('--port <port>', 'Port for llama-server', '8080')
+      .option('--ctx-size <tokens>', 'Context size')
+      .option('--threads <count>', 'Thread count')
+      .option('--gpu-layers <count>', 'GPU layers to offload')
+      .option('--extra-arg <arg...>', 'Additional llama-server arguments')
+      .option(
+        '--no-auto-start',
+        'Do not auto-start this runtime before requests',
+      )
+
+  addLlamaCppRuntimeOptions(
+    llamaCppCmd
+      .command('start')
+      .description('Start a managed llama.cpp server without saving a profile'),
+  ).action(async (options: any) => {
+    try {
+      const port = Number(options.port)
+      const profile = {
+        name: 'llama.cpp runtime',
+        provider: 'llama-cpp' as any,
+        modelName: options.gguf.split(/[\\/]/).pop() || 'llama-cpp',
+        apiKey: LLAMA_CPP_DEFAULT_API_KEY,
+        baseURL: getLlamaCppBaseURL({ host: options.host, port }),
+        maxTokens: 8192,
+        contextLength: Number(options.ctxSize) || 8192,
+        isActive: true,
+        createdAt: Date.now(),
+        llamaCpp: {
+          mode: 'managed' as const,
+          binaryPath: options.binary,
+          modelPath: options.gguf,
+          host: options.host,
+          port,
+          ctxSize: options.ctxSize ? Number(options.ctxSize) : undefined,
+          threads: options.threads ? Number(options.threads) : undefined,
+          gpuLayers: options.gpuLayers ? Number(options.gpuLayers) : undefined,
+          extraArgs: Array.isArray(options.extraArg)
+            ? options.extraArg
+            : undefined,
+          autoStart: options.autoStart !== false,
+        },
+      }
+      const runtimeProfile = await ensureLlamaCppRuntime(profile)
+      console.log(`Started llama.cpp at ${runtimeProfile.baseURL}`)
+      process.exit(0)
+    } catch (error) {
+      console.error((error as Error).message)
+      process.exit(1)
+    }
+  })
+
+  addLlamaCppRuntimeOptions(
+    llamaCppCmd
+      .command('add-profile')
+      .description('Add a managed llama.cpp model profile'),
+  )
+    .requiredOption('--name <name>', 'Profile display name')
+    .option('--model-name <modelName>', 'Model identifier to send to llama.cpp')
+    .option('--max-tokens <maxTokens>', 'Maximum output tokens', '8192')
+    .action(async (options: any) => {
+      try {
+        const workingDir =
+          typeof options?.cwd === 'string' ? options.cwd : cwd()
+        await setup(workingDir, false)
+        const port = Number(options.port)
+        const modelName =
+          typeof options.modelName === 'string' && options.modelName.trim()
+            ? options.modelName.trim()
+            : options.gguf.split(/[\\/]/).pop() || 'llama-cpp'
+        const config = getGlobalConfig()
+        const profiles = [...(config.modelProfiles ?? [])]
+        if (profiles.some(profile => profile.modelName === modelName)) {
+          throw new Error(`Model profile '${modelName}' already exists`)
+        }
+        profiles.push({
+          name: options.name,
+          provider: 'llama-cpp' as any,
+          modelName,
+          apiKey: LLAMA_CPP_DEFAULT_API_KEY,
+          baseURL: getLlamaCppBaseURL({ host: options.host, port }),
+          maxTokens: Number(options.maxTokens) || 8192,
+          contextLength: Number(options.ctxSize) || 8192,
+          isActive: true,
+          createdAt: Date.now(),
+          llamaCpp: {
+            mode: 'managed',
+            binaryPath: options.binary,
+            modelPath: options.gguf,
+            host: options.host,
+            port,
+            ctxSize: options.ctxSize ? Number(options.ctxSize) : undefined,
+            threads: options.threads ? Number(options.threads) : undefined,
+            gpuLayers: options.gpuLayers
+              ? Number(options.gpuLayers)
+              : undefined,
+            extraArgs: Array.isArray(options.extraArg)
+              ? options.extraArg
+              : undefined,
+            autoStart: options.autoStart !== false,
+          },
+        })
+        const pointers = {
+          ...(config.modelPointers ?? {
+            main: '',
+            task: '',
+            compact: '',
+            quick: '',
+          }),
+        }
+        if (!pointers.main) {
+          pointers.main = modelName
+          if (!pointers.task) pointers.task = modelName
+          if (!pointers.compact) pointers.compact = modelName
+          if (!pointers.quick) pointers.quick = modelName
+        }
+        saveGlobalConfig({
+          ...config,
+          modelProfiles: profiles,
+          modelPointers: pointers,
+          defaultModelName: config.defaultModelName || modelName,
+        })
+        await import('@utils/model').then(({ reloadModelManager }) => {
+          reloadModelManager()
+        })
+        console.log(
+          `Added llama.cpp model profile '${options.name}' (${modelName})`,
+        )
+        process.exit(0)
+      } catch (error) {
+        console.error((error as Error).message)
+        process.exit(1)
+      }
+    })
+
   const agentsCmd = program
     .command('agents')
     .description('Agent utilities (validate templates, etc.)')
 
   agentsCmd
     .command('validate [paths...]')
-    .description('Validate agent markdown files (defaults to user+project agent dirs)')
+    .description(
+      'Validate agent markdown files (defaults to user+project agent dirs)',
+    )
     .option('--cwd <cwd>', 'The current working directory', String, cwd())
     .option('--json', 'Output as JSON')
-    .option('--no-tools-check', 'Skip validating tool names against the tool registry')
-    .action(
-      async (paths: string[] | undefined, options: any) => {
-        try {
-          const workingDir = typeof options?.cwd === 'string' ? options.cwd : cwd()
-          await setup(workingDir, false)
-          const { validateAgentTemplates } = await import('./agentsValidate')
-          const report = await validateAgentTemplates({
-            cwd: workingDir,
-            paths: Array.isArray(paths) ? paths : [],
-            checkTools: options.toolsCheck !== false,
-          })
+    .option(
+      '--no-tools-check',
+      'Skip validating tool names against the tool registry',
+    )
+    .action(async (paths: string[] | undefined, options: any) => {
+      try {
+        const workingDir =
+          typeof options?.cwd === 'string' ? options.cwd : cwd()
+        await setup(workingDir, false)
+        const { validateAgentTemplates } = await import('./agentsValidate')
+        const report = await validateAgentTemplates({
+          cwd: workingDir,
+          paths: Array.isArray(paths) ? paths : [],
+          checkTools: options.toolsCheck !== false,
+        })
 
-          if (options.json) {
-            console.log(JSON.stringify(report, null, 2))
-            process.exitCode = report.ok ? 0 : 1
-            return
-          }
-
-          console.log(
-            `Validated ${report.results.length} agent file(s): ${report.errorCount} error(s), ${report.warningCount} warning(s)\n`,
-          )
-
-          for (const r of report.results) {
-            const rel = r.filePath
-            const title = r.agentType ? `${r.agentType}` : '(unknown agent)'
-            console.log(`${title} — ${rel}`)
-            if (r.model) {
-              const normalized = r.normalizedModel ? ` (normalized: ${r.normalizedModel})` : ''
-              console.log(`  model: ${r.model}${normalized}`)
-            }
-            if (r.issues.length === 0) {
-              console.log(`  OK`)
-            } else {
-              for (const issue of r.issues) {
-                console.log(`  - ${issue.level}: ${issue.message}`)
-              }
-            }
-            console.log('')
-          }
-
+        if (options.json) {
+          console.log(JSON.stringify(report, null, 2))
           process.exitCode = report.ok ? 0 : 1
           return
-        } catch (error) {
-          console.error((error as Error).message)
-          process.exitCode = 1
-          return
         }
-      },
-    )
 
+        console.log(
+          `Validated ${report.results.length} agent file(s): ${report.errorCount} error(s), ${report.warningCount} warning(s)\n`,
+        )
+
+        for (const r of report.results) {
+          const rel = r.filePath
+          const title = r.agentType ? `${r.agentType}` : '(unknown agent)'
+          console.log(`${title} — ${rel}`)
+          if (r.model) {
+            const normalized = r.normalizedModel
+              ? ` (normalized: ${r.normalizedModel})`
+              : ''
+            console.log(`  model: ${r.model}${normalized}`)
+          }
+          if (r.issues.length === 0) {
+            console.log(`  OK`)
+          } else {
+            for (const issue of r.issues) {
+              console.log(`  - ${issue.level}: ${issue.message}`)
+            }
+          }
+          console.log('')
+        }
+
+        process.exitCode = report.ok ? 0 : 1
+        return
+      } catch (error) {
+        console.error((error as Error).message)
+        process.exitCode = 1
+        return
+      }
+    })
 
   const registerMarketplaceCommands = (marketplaceCmd: Command) => {
     marketplaceCmd
@@ -1341,7 +1950,6 @@ async function parseArgs(
       }
     })
 
-
   const skillsCmd = program
     .command('skills')
     .description('Manage skills and skill marketplaces')
@@ -1425,7 +2033,6 @@ async function parseArgs(
       }
     })
 
-
   const allowedTools = program
     .command('approved-tools')
     .description('Manage approved tools')
@@ -1447,7 +2054,6 @@ async function parseArgs(
       console.log(result.message)
       process.exit(result.success ? 0 : 1)
     })
-
 
   const mcp = program
     .command('mcp')
@@ -1969,7 +2575,6 @@ async function parseArgs(
           process.exit(1)
         }
 
-
         addMcpServer(name, serverConfig, scope)
 
         switch (serverConfig.type) {
@@ -2433,7 +3038,6 @@ async function parseArgs(
       })
       process.exit(0)
     })
-
 
   program
     .command('update')

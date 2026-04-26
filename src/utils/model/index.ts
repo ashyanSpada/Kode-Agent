@@ -68,6 +68,16 @@ export function getVertexRegionForModel(
 }
 
 export class ModelManager {
+  private normalizePointerAlias(
+    pointer: string,
+  ): 'main' | 'task' | 'compact' | 'quick' | null {
+    if (pointer === 'reasoning') return 'compact'
+    if (['main', 'task', 'compact', 'quick'].includes(pointer)) {
+      return pointer as 'main' | 'task' | 'compact' | 'quick'
+    }
+    return null
+  }
+
   private config: any
   private modelProfiles: ModelProfile[]
 
@@ -466,7 +476,6 @@ export class ModelManager {
     return this.getActiveModelProfiles().length > 0
   }
 
-
   getModel(pointer: ModelPointerType): ModelProfile | null {
     const pointerId = this.config.modelPointers?.[pointer]
     if (!pointerId) {
@@ -656,9 +665,10 @@ export class ModelManager {
   }
 
   resolveModel(modelParam: string | ModelPointerType): ModelProfile | null {
-    if (['main', 'task', 'compact', 'quick'].includes(modelParam)) {
+    const normalizedPointer = this.normalizePointerAlias(String(modelParam))
+    if (normalizedPointer) {
       const pointerId =
-        this.config.modelPointers?.[modelParam as ModelPointerType]
+        this.config.modelPointers?.[normalizedPointer as ModelPointerType]
       if (pointerId) {
         let profile = this.findModelProfile(pointerId)
         if (!profile) {
@@ -701,16 +711,17 @@ export class ModelManager {
     profile: ModelProfile | null
     error?: string
   } {
-    const isPointer = ['main', 'task', 'compact', 'quick'].includes(modelParam)
+    const normalizedPointer = this.normalizePointerAlias(String(modelParam))
+    const isPointer = Boolean(normalizedPointer)
 
     if (isPointer) {
       const pointerId =
-        this.config.modelPointers?.[modelParam as ModelPointerType]
+        this.config.modelPointers?.[normalizedPointer as ModelPointerType]
       if (!pointerId) {
         return {
           success: false,
           profile: null,
-          error: `Model pointer '${modelParam}' is not configured. Use /model to set up models.`,
+          error: `Model pointer '${normalizedPointer}' is not configured. Use /model to set up models.`,
         }
       }
 
@@ -723,7 +734,7 @@ export class ModelManager {
         return {
           success: false,
           profile: null,
-          error: `Model pointer '${modelParam}' points to invalid model '${pointerId}'. Use /model to reconfigure.`,
+          error: `Model pointer '${normalizedPointer}' points to invalid model '${pointerId}'. Use /model to reconfigure.`,
         }
       }
 
@@ -731,7 +742,7 @@ export class ModelManager {
         return {
           success: false,
           profile: null,
-          error: `Model '${profile.name}' (pointed by '${modelParam}') is inactive. Use /model to activate it.`,
+          error: `Model '${profile.name}' (pointed by '${normalizedPointer}') is inactive. Use /model to activate it.`,
         }
       }
 

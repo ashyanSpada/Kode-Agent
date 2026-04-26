@@ -22,6 +22,7 @@ type Props = {
   verbose?: boolean
   initialMessages?: Message[]
   persistSession?: boolean
+  model?: string
 }
 
 export async function ask({
@@ -35,6 +36,7 @@ export async function ask({
   verbose = false,
   initialMessages,
   persistSession = true,
+  model,
 }: Props): Promise<{
   resultText: string
   totalCost: number
@@ -44,7 +46,7 @@ export async function ask({
   const message = createUserMessage(prompt)
   const messages: Message[] = [...(initialMessages ?? []), message]
 
-  const [systemPrompt, context, model] = await Promise.all([
+  const [systemPrompt, context, mainModel] = await Promise.all([
     getSystemPrompt(),
     getContext(),
     getModelManager().getModelName('main'),
@@ -65,6 +67,7 @@ export async function ask({
         messageLogName: 'unused',
         maxThinkingTokens: 0,
         persistSession,
+        model: model || mainModel || undefined,
       },
       abortController: new AbortController(),
       messageId: undefined,

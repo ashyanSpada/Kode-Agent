@@ -871,6 +871,7 @@ export default {
   'baidu-qianfan': [],
   siliconflow: [],
   ollama: [],
+  'llama-cpp': [],
   burncloud: [],
   'minimax-coding': [],
   'glm-coding': [],
@@ -904,6 +905,10 @@ export const providers = {
   ollama: {
     name: 'Ollama',
     baseURL: 'http://localhost:11434/v1',
+  },
+  'llama-cpp': {
+    name: 'llama.cpp',
+    baseURL: 'http://127.0.0.1:8080/v1',
   },
   gemini: {
     name: 'Gemini',

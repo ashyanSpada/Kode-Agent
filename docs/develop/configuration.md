@@ -11,9 +11,9 @@ Environment Variables (Highest Priority)
            ↓
     Runtime Flags (CLI)
            ↓
-  Project Configuration (./.claude/config.json)
+  Project Settings (./.kode/settings.json)
            ↓
-   Global Configuration (~/.claude/config.json)
+ Global Config (~/.kode.json by default)
            ↓
       Default Values (Lowest Priority)
 ```
@@ -21,24 +21,31 @@ Environment Variables (Highest Priority)
 ## Configuration Files
 
 ### Global Configuration
-**Location**: `~/.claude/config.json`
+**Location**:
+- Default: `~/.kode.json`
+- If `KODE_CONFIG_DIR` or `CLAUDE_CONFIG_DIR` is set: `<that-dir>/config.json`
 
 ```json
 {
   "theme": "dark",
   "hasCompletedOnboarding": true,
-  "modelProfiles": {
-    "default": {
-      "type": "anthropic",
-      "model": "claude-3-5-sonnet-20241022",
-      "maxTokens": 8192
+  "modelProfiles": [
+    {
+      "name": "Claude Sonnet",
+      "provider": "anthropic",
+      "modelName": "claude-sonnet-4-20250514",
+      "apiKey": "***",
+      "maxTokens": 8192,
+      "contextLength": 200000,
+      "isActive": true,
+      "createdAt": 1710000000000
     }
-  },
+  ],
   "modelPointers": {
-    "main": "default",
-    "task": "fast",
-    "reasoning": "smart",
-    "quick": "quick"
+    "main": "claude-sonnet-4-20250514",
+    "task": "claude-sonnet-4-20250514",
+    "compact": "claude-sonnet-4-20250514",
+    "quick": "claude-sonnet-4-20250514"
   },
   "mcpServers": {},
   "customApiKey": null,
@@ -47,8 +54,8 @@ Environment Variables (Highest Priority)
 }
 ```
 
-### Project Configuration
-**Location**: `./.claude/config.json`
+### Project Settings
+**Location**: `./.kode/settings.json` (local overrides in `./.kode/settings.local.json`)
 
 ```json
 {
@@ -82,17 +89,15 @@ Define reusable AI model configurations:
 
 ```typescript
 interface ModelProfile {
-  id: string
   name: string
-  provider: 'anthropic' | 'openai' | 'custom'
-  config: {
-    model: string
-    baseURL?: string
-    apiKey?: string
-    maxTokens?: number
-    temperature?: number
-    headers?: Record<string, string>
-  }
+  provider: string
+  modelName: string
+  baseURL?: string
+  apiKey: string
+  maxTokens: number
+  contextLength: number
+  isActive: boolean
+  createdAt: number
 }
 ```
 
@@ -103,7 +108,7 @@ Map roles to model profiles:
 interface ModelPointers {
   main: string      // Primary conversation model
   task: string      // Task execution model
-  reasoning: string // Complex reasoning model
+  compact: string   // Context compaction model
   quick: string     // Fast responses model
 }
 ```
@@ -201,17 +206,18 @@ saveCurrentProjectConfig({
 ### CLI Configuration Commands
 
 ```bash
-# Get configuration value
+# Get configuration value (limited to config keys)
 kode config get theme
-kode config get -g modelProfiles.default.model
+kode config get -g primaryProvider
 
 # Set configuration value
 kode config set theme dark
 kode config set -g autoUpdaterStatus enabled
 
-# Remove configuration value
-kode config remove customApiKey
-kode config remove -g mcpServers.myserver
+# Manage models (profiles + pointers)
+kode models list
+kode models set-pointer main my-profile
+kode models add-profile --name my-profile --provider openai --model-name gpt-4.1 --api-key "$OPENAI_API_KEY"
 
 # List all configuration
 kode config list
@@ -228,9 +234,13 @@ kode config list -g
 # API Keys
 OPENAI_API_KEY=sk-...
 
-# Model Selection
-CLAUDE_MODEL=claude-3-5-sonnet-20241022
-DEFAULT_MODEL_PROFILE=fast
+# Config location overrides
+KODE_CONFIG_DIR=/path/to/kode-config
+CLAUDE_CONFIG_DIR=/path/to/compat-config
+
+# Provider routing flags
+KODE_USE_BEDROCK=1
+KODE_USE_VERTEX=1
 
 # Feature Flags
 ENABLE_ARCHITECT_TOOL=true
@@ -313,7 +323,7 @@ Using Zod for runtime validation:
 ```typescript
 const ConfigSchema = z.object({
   theme: z.enum(['dark', 'light']).optional(),
-  modelProfiles: z.record(ModelProfileSchema).optional(),
+  modelProfiles: z.array(ModelProfileSchema).optional(),
   modelPointers: ModelPointersSchema.optional(),
   mcpServers: z.record(MCPServerConfigSchema).optional(),
   // ... other fields
@@ -363,21 +373,93 @@ Temporary for current session:
 
 ```json
 {
-  "modelProfiles": {
-    "custom-llm": {
-      "type": "custom",
-      "name": "My Custom LLM",
-      "config": {
-        "baseURL": "https://my-llm-api.com",
-        "apiKey": "custom-key",
-        "model": "my-model-v1",
-        "headers": {
-          "X-Custom-Header": "value"
-        }
+  "modelProfiles": [
+    {
+      "name": "custom-llm",
+      "provider": "custom-openai",
+      "modelName": "my-model-v1",
+      "baseURL": "https://my-llm-api.com/v1",
+      "apiKey": "custom-key",
+      "maxTokens": 4096,
+      "contextLength": 128000,
+      "isActive": true,
+      "createdAt": 1710000000000
+    }
+  ]
+}
+```
+
+### llama.cpp Provider
+
+Kode can connect to an existing `llama-server` or manage a local
+`llama-server` process for GGUF models. Both modes use llama.cpp's
+OpenAI-compatible endpoints (`/v1/models` and `/v1/chat/completions`).
+
+Existing server profile:
+
+```json
+{
+  "modelProfiles": [
+    {
+      "name": "Local llama.cpp",
+      "provider": "llama-cpp",
+      "modelName": "model.gguf",
+      "baseURL": "http://127.0.0.1:8080/v1",
+      "apiKey": "no-key",
+      "maxTokens": 8192,
+      "contextLength": 8192,
+      "isActive": true,
+      "createdAt": 1710000000000,
+      "llamaCpp": {
+        "mode": "existing",
+        "host": "127.0.0.1",
+        "port": 8080,
+        "autoStart": false
       }
     }
-  }
+  ]
 }
+```
+
+Managed local profile:
+
+```json
+{
+  "modelProfiles": [
+    {
+      "name": "Managed llama.cpp",
+      "provider": "llama-cpp",
+      "modelName": "mistral.Q4_K_M.gguf",
+      "baseURL": "http://127.0.0.1:8080/v1",
+      "apiKey": "no-key",
+      "maxTokens": 8192,
+      "contextLength": 8192,
+      "isActive": true,
+      "createdAt": 1710000000000,
+      "llamaCpp": {
+        "mode": "managed",
+        "binaryPath": "/usr/local/bin/llama-server",
+        "modelPath": "/models/mistral.Q4_K_M.gguf",
+        "host": "127.0.0.1",
+        "port": 8080,
+        "ctxSize": 8192,
+        "threads": 8,
+        "gpuLayers": 35,
+        "extraArgs": ["--parallel", "2"],
+        "autoStart": true
+      }
+    }
+  ]
+}
+```
+
+CLI helpers:
+
+```bash
+kode models llama-cpp status
+kode models llama-cpp start --binary /usr/local/bin/llama-server --gguf /models/model.gguf
+kode models llama-cpp stop
+kode models llama-cpp add-profile --name "Local llama.cpp" --binary /usr/local/bin/llama-server --gguf /models/model.gguf --ctx-size 8192 --threads 8 --gpu-layers 35
 ```
 
 ### MCP Server Examples
@@ -474,11 +556,8 @@ Temporary for current session:
 # Show configuration
 kode config list
 
-# Reset to defaults
-kode config reset
-
-# Show configuration paths
-kode config paths
+# Show model diagnostics (includes config path)
+kode models list
 ```
 
 The configuration system provides flexible, secure, and robust management of all Kode settings while maintaining backward compatibility and user-friendly defaults.
