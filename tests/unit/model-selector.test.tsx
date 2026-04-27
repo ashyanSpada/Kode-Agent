@@ -4,6 +4,7 @@ import { PassThrough } from 'stream'
 import stripAnsi from 'strip-ansi'
 import { Box, Text, render } from 'ink'
 import { buildModelOptions } from '@components/model-selector/filterModels'
+import { findReusableModelProfile } from '@components/model-selector/ModelSelector'
 import { ModelSelectionScreen } from '@components/model-selector/ModelSelectionScreen'
 import { getTheme } from '@utils/theme'
 
@@ -76,6 +77,49 @@ describe('ModelSelector modularization', () => {
       'gpt',
     )
     expect(options.map(o => o.value)).toEqual(['gpt-5'])
+  })
+
+  test('findReusableModelProfile chooses latest configured credentials for provider', () => {
+    const profile = findReusableModelProfile(
+      [
+        {
+          name: 'Old OpenAI',
+          provider: 'openai',
+          modelName: 'gpt-4o',
+          apiKey: 'old-key',
+          baseURL: 'https://old.example/v1',
+          maxTokens: 8192,
+          contextLength: 128000,
+          isActive: true,
+          createdAt: 1,
+        },
+        {
+          name: 'Current OpenAI',
+          provider: 'openai',
+          modelName: 'gpt-5',
+          apiKey: 'new-key',
+          baseURL: 'https://new.example/v1',
+          maxTokens: 8192,
+          contextLength: 128000,
+          isActive: true,
+          createdAt: 2,
+        },
+        {
+          name: 'Anthropic',
+          provider: 'anthropic',
+          modelName: 'claude',
+          apiKey: 'anthropic-key',
+          maxTokens: 8192,
+          contextLength: 200000,
+          isActive: true,
+          createdAt: 3,
+        },
+      ] as any,
+      'openai' as any,
+    )
+
+    expect(profile?.apiKey).toBe('new-key')
+    expect(profile?.baseURL).toBe('https://new.example/v1')
   })
 
   test('ModelSelectionScreen filters and calls onModelSelect', async () => {

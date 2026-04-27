@@ -13,6 +13,7 @@ import {
 } from '@services/gpt5ConnectionTest'
 import {
   getGlobalConfig,
+  type ModelProfile,
   ModelPointerType,
   ProviderType,
   saveGlobalConfig,
@@ -103,6 +104,22 @@ const WindowedOptions = React.memo(function WindowedOptions({
   )
 })
 
+export function findReusableModelProfile(
+  profiles: ModelProfile[] | undefined,
+  provider: ProviderType,
+): ModelProfile | undefined {
+  const candidates = (profiles ?? []).filter(profile => {
+    if (profile.provider !== provider) return false
+    return Boolean(profile.apiKey || profile.baseURL)
+  })
+
+  return candidates.sort((left, right) => {
+    const leftTime = left.lastUsed ?? left.createdAt ?? 0
+    const rightTime = right.lastUsed ?? right.createdAt ?? 0
+    return rightTime - leftTime
+  })[0]
+}
+
 type Props = {
   onDone: () => void
   abortController?: AbortController
@@ -141,6 +158,26 @@ export function ModelSelector({
       ? (config.modelProfiles ?? []).find(p => p.modelName === editingModelName)
       : undefined,
   )
+
+  const getReusableProfile = useCallback(
+    (provider: ProviderType) =>
+      editingProfile
+        ? undefined
+        : findReusableModelProfile(config.modelProfiles, provider),
+    [config.modelProfiles, editingProfile],
+  )
+
+  const getInitialApiKey = (provider: ProviderType): string => {
+    if (editingProfile) return editingProfile.apiKey ?? ''
+    const envValue = process.env[provider.toUpperCase() + '_API_KEY']
+    if (envValue) return envValue
+    return getReusableProfile(provider)?.apiKey ?? ''
+  }
+
+  const getInitialBaseUrl = (provider: ProviderType): string => {
+    if (editingProfile?.provider === provider) return editingProfile.baseURL ?? ''
+    return getReusableProfile(provider)?.baseURL ?? ''
+  }
 
   const getInitialScreen = (): string => {
     return editingProfile ? 'modelInput' : 'provider'
@@ -212,7 +249,9 @@ export function ModelSelector({
   const [selectedModel, setSelectedModel] = useState<string>(
     editingProfile?.modelName ?? '',
   )
-  const [apiKey, setApiKey] = useState<string>(editingProfile?.apiKey ?? '')
+  const [apiKey, setApiKey] = useState<string>(
+    getInitialApiKey(selectedProvider),
+  )
 
   const [maxTokens, setMaxTokens] = useState<string>(
     editingProfile?.maxTokens?.toString() ||
@@ -320,17 +359,22 @@ export function ModelSelector({
   const [ollamaBaseUrlCursorOffset, setOllamaBaseUrlCursorOffset] =
     useState<number>(0)
 
-  const [customBaseUrl, setCustomBaseUrl] = useState<string>(
-    selectedProvider === 'custom-openai' ? (editingProfile?.baseURL ?? '') : '',
-  )
-  const [customBaseUrlCursorOffset, setCustomBaseUrlCursorOffset] =
-    useState<number>(0)
+  const initialCustomBaseUrl =
+    selectedProvider === 'custom-openai'
+      ? getInitialBaseUrl('custom-openai' as ProviderType)
+      : ''
+  const initialProviderBaseUrl =
+    selectedProvider !== 'custom-openai' ? getInitialBaseUrl(selectedProvider) : ''
 
-  const [providerBaseUrl, setProviderBaseUrl] = useState<string>(
-    selectedProvider !== 'custom-openai' ? (editingProfile?.baseURL ?? '') : '',
-  )
+  const [customBaseUrl, setCustomBaseUrl] =
+    useState<string>(initialCustomBaseUrl)
+  const [customBaseUrlCursorOffset, setCustomBaseUrlCursorOffset] =
+    useState<number>(initialCustomBaseUrl.length)
+
+  const [providerBaseUrl, setProviderBaseUrl] =
+    useState<string>(initialProviderBaseUrl)
   const [providerBaseUrlCursorOffset, setProviderBaseUrlCursorOffset] =
-    useState<number>(0)
+    useState<number>(initialProviderBaseUrl.length)
 
   const reasoningEffortOptions = REASONING_EFFORT_OPTIONS
 
@@ -398,15 +442,10 @@ export function ModelSelector({
   useEffect(() => {
     if (editingProfile) return
     if (!apiKeyEdited && selectedProvider) {
-      if (process.env[selectedProvider.toUpperCase() + '_API_KEY']) {
-        setApiKey(
-          process.env[selectedProvider.toUpperCase() + '_API_KEY'] as string,
-        )
-      } else {
-        setApiKey('')
-      }
+      const envValue = process.env[selectedProvider.toUpperCase() + '_API_KEY']
+      setApiKey(envValue || getReusableProfile(selectedProvider)?.apiKey || '')
     }
-  }, [editingProfile, selectedProvider, apiKeyEdited])
+  }, [editingProfile, selectedProvider, apiKeyEdited, getReusableProfile])
 
   useEffect(() => {
     if (
@@ -535,14 +574,27 @@ export function ModelSelector({
       navigateTo('partnerCodingPlans')
       return
     } else if (provider === 'custom-anthropic') {
-      setSelectedProvider('anthropic' as ProviderType)
-      setProviderBaseUrl('')
+      const providerType = 'anthropic' as ProviderType
+      const reusableProfile = getReusableProfile(providerType)
+      const nextBaseUrl = reusableProfile?.baseURL || ''
+      setSelectedProvider(providerType)
+      if (!apiKeyEdited) {
+        const envValue = process.env[providerType.toUpperCase() + '_API_KEY']
+        setApiKey(envValue || reusableProfile?.apiKey || '')
+      }
+      setProviderBaseUrl(nextBaseUrl)
+      setProviderBaseUrlCursorOffset(nextBaseUrl.length)
       navigateTo('baseUrl')
       return
     }
 
     const providerType = provider as ProviderType
     setSelectedProvider(providerType)
+    const reusableProfile = getReusableProfile(providerType)
+    if (!apiKeyEdited) {
+      const envValue = process.env[providerType.toUpperCase() + '_API_KEY']
+      setApiKey(envValue || reusableProfile?.apiKey || '')
+    }
 
     if (provider === 'custom') {
       saveConfiguration(providerType, selectedModel || '')
@@ -554,11 +606,20 @@ export function ModelSelector({
       navigateTo('llamaCppMode')
     } else if (provider === 'custom-openai' || provider === 'ollama') {
       const defaultBaseUrl = providers[providerType]?.baseURL || ''
-      setProviderBaseUrl(defaultBaseUrl)
+      const nextBaseUrl = reusableProfile?.baseURL || defaultBaseUrl
+      setProviderBaseUrl(nextBaseUrl)
+      if (provider === 'custom-openai') {
+        setCustomBaseUrl(nextBaseUrl)
+        setCustomBaseUrlCursorOffset(nextBaseUrl.length)
+      } else {
+        setProviderBaseUrlCursorOffset(nextBaseUrl.length)
+      }
       navigateTo('baseUrl')
     } else {
       const defaultBaseUrl = providers[providerType]?.baseURL || ''
-      setProviderBaseUrl(defaultBaseUrl)
+      const nextBaseUrl = reusableProfile?.baseURL || defaultBaseUrl
+      setProviderBaseUrl(nextBaseUrl)
+      setProviderBaseUrlCursorOffset(nextBaseUrl.length)
       navigateTo('apiKey')
     }
   }

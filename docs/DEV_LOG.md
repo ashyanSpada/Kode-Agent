@@ -9,3 +9,8 @@
 - 提交摘要/Commit: feat: add llama.cpp provider support.
 - 文件/File: `src/services/ai/llamaCppRuntime.ts`、`src/ui/components/model-selector/ModelSelector.tsx`、`src/entrypoints/cli/runCli.tsx`、`docs/develop/configuration.md`。
 - 破坏性变更/Breaking: 无 / None.
+
+## 2026-04-27 20:34
+- Improved Manage Model List so adding models can reuse existing provider credentials and API base URLs.
+- Preserved environment API key overrides while falling back to configured local model profiles.
+- Added focused coverage for selecting reusable provider credentials.
