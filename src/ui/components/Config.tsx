@@ -14,38 +14,38 @@ type Props = {
 
 type Setting =
   | {
-      id: string
-      label: string
-      value: boolean
-      onChange(value: boolean): void
-      type: 'boolean'
-      disabled?: boolean
-    }
+    id: string
+    label: string
+    value: boolean
+    onChange(value: boolean): void
+    type: 'boolean'
+    disabled?: boolean
+  }
   | {
-      id: string
-      label: string
-      value: string
-      options: string[]
-      onChange(value: string): void
-      type: 'enum'
-      disabled?: boolean
-    }
+    id: string
+    label: string
+    value: string
+    options: string[]
+    onChange(value: string): void
+    type: 'enum'
+    disabled?: boolean
+  }
   | {
-      id: string
-      label: string
-      value: string
-      onChange(value: string): void
-      type: 'string'
-      disabled?: boolean
-    }
+    id: string
+    label: string
+    value: string
+    onChange(value: string): void
+    type: 'string'
+    disabled?: boolean
+  }
   | {
-      id: string
-      label: string
-      value: number
-      onChange(value: number): void
-      type: 'number'
-      disabled?: boolean
-    }
+    id: string
+    label: string
+    value: number
+    onChange(value: number): void
+    type: 'number'
+    disabled?: boolean
+  }
 
 export function Config({ onClose }: Props): React.ReactNode {
   const [globalConfig, setGlobalConfig] = useState(getGlobalConfig())
@@ -119,7 +119,7 @@ export function Config({ onClose }: Props): React.ReactNode {
             setInputError('Please enter a valid number')
           } else {
             try {
-              ;(currentSetting as any).onChange(numValue)
+              ; (currentSetting as any).onChange(numValue)
               setEditingString(false)
               setCurrentInput('')
               setInputError(null)

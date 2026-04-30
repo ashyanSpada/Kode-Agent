@@ -485,9 +485,7 @@ export async function* query(
     m2: AssistantMessage,
   ) => Promise<BinaryFeedbackResult>,
 ): AsyncGenerator<Message, void> {
-  const shouldPersistSession =
-    toolUseContext.options?.persistSession !== false &&
-    process.env.NODE_ENV !== 'test'
+  const shouldPersistSession = toolUseContext.options?.persistSession !== false
 
   // Persist the last user message that triggered this query (if it's a text message, not a tool result)
   // This ensures user prompts are saved to the session file for resume/undo functionality
@@ -536,6 +534,7 @@ async function* queryCore(
   try {
     const currentRequest = getCurrentRequest()
 
+    // Step 1: initialize turn state and shrink history if auto-compact is needed.
     markPhase('QUERY_INIT')
     const stopHookActive = hookState?.stopHookActive === true
     const stopHookAttempts = hookState?.stopHookAttempts ?? 0
@@ -546,6 +545,7 @@ async function* queryCore(
       messages = processedMessages
     }
 
+    // Step 2: surface pending shell/background task updates before the LLM call.
     if (toolUseContext.agentId === 'main') {
       const shell = BunShell.getInstance()
 
@@ -572,6 +572,7 @@ async function* queryCore(
 
     updateHookTranscriptForMessages(toolUseContext, messages)
 
+    // Step 3: run prompt-submit hooks; a blocking hook ends the turn early.
     {
       const last = messages[messages.length - 1]
       let userPromptText: string | null = null
@@ -619,10 +620,21 @@ async function* queryCore(
       }
     }
 
+    // Step 4: build the effective prompt package for this LLM turn.
+    // Prompt material is intentionally layered in a stable order:
+    //   1. caller-provided base system prompt,
+    //   2. formatted repo/session context,
+    //   3. mode-specific additions, hooks, and output style instructions,
+    //   4. per-turn reminders injected into the latest user message.
     markPhase('SYSTEM_PROMPT_BUILD')
 
+    // Recover plan metadata from prior messages before generating plan-mode
+    // prompt additions, so resumed sessions preserve their active plan context.
     hydratePlanSlugFromMessages(messages as any[], toolUseContext)
 
+    // Combine the base system prompt with contextual sections. This returns the
+    // mutable system prompt array passed to the model plus any user-facing
+    // reminders that should sit closest to the latest user instruction.
     const { systemPrompt: fullSystemPrompt, reminders } =
       formatSystemPromptWithContext(
         systemPrompt,
@@ -630,6 +642,8 @@ async function* queryCore(
         toolUseContext.agentId,
       )
 
+    // Plan mode adds constraints such as read-only behavior and plan file
+    // handling. These are appended after baseline context so they can refine it.
     const planModeAdditions = getPlanModeSystemPromptAdditions(
       messages as any[],
       toolUseContext,
@@ -638,11 +652,15 @@ async function* queryCore(
       fullSystemPrompt.push(...planModeAdditions)
     }
 
+    // Hooks can enqueue transient system instructions during earlier lifecycle
+    // events. Drain them once so they affect only this turn.
     const hookAdditions = drainHookSystemPromptAdditions(toolUseContext)
     if (hookAdditions.length > 0) {
       fullSystemPrompt.push(...hookAdditions)
     }
 
+    // Output style is only applied to the main agent. Subagents keep their
+    // explicit task prompts isolated from the user's interactive style settings.
     if (toolUseContext.agentId === 'main') {
       const outputStyleAdditions = getOutputStyleSystemPromptAdditions()
       if (outputStyleAdditions.length > 0) {
@@ -656,6 +674,8 @@ async function* queryCore(
       timestamp: Date.now(),
     })
 
+    // Reminders are prepended to the latest user message, not appended as system
+    // text, so they are temporally adjacent to the user request they qualify.
     if (reminders && messages.length > 0) {
       for (let i = messages.length - 1; i >= 0; i--) {
         const msg = messages[i]
@@ -669,11 +689,11 @@ async function* queryCore(
                 typeof lastUserMessage.message.content === 'string'
                   ? reminders + lastUserMessage.message.content
                   : [
-                      ...(Array.isArray(lastUserMessage.message.content)
-                        ? lastUserMessage.message.content
-                        : []),
-                      { type: 'text', text: reminders },
-                    ],
+                    ...(Array.isArray(lastUserMessage.message.content)
+                      ? lastUserMessage.message.content
+                      : []),
+                    { type: 'text', text: reminders },
+                  ],
             },
           }
           break
@@ -681,8 +701,30 @@ async function* queryCore(
       }
     }
 
+    // Temporary prompt inspection: enable with KODE_DEBUG_PROMPT_PREVIEW=1
+    if (process.env.KODE_DEBUG_PROMPT_PREVIEW === '1') {
+      const latestUserMessage = [...messages]
+        .reverse()
+        .find(m => m.type === 'user') as UserMessage | undefined
+      const latestUserContent = latestUserMessage
+        ? typeof latestUserMessage.message.content === 'string'
+          ? latestUserMessage.message.content
+          : JSON.stringify(latestUserMessage.message.content)
+        : null
+
+      debugLogger.api('PROMPT_PREVIEW', {
+        requestId: currentRequest?.id,
+        agentId: toolUseContext.agentId,
+        systemPromptCount: fullSystemPrompt.length,
+        systemPrompt: fullSystemPrompt,
+        latestUserContent,
+      })
+    }
+
     markPhase('LLM_PREPARATION')
 
+    // Step 5: call the model. Binary feedback may request two candidate responses
+    // and choose one, but the rest of the loop sees one assistant message.
     function getAssistantResponse() {
       return queryLLM(
         normalizeMessagesForAPI(messages),
@@ -718,9 +760,12 @@ async function* queryCore(
     const assistantMessage = result.message
     const shouldSkipPermissionCheck = result.shouldSkipPermissionCheck
 
+    // Step 6: split final-answer turns from tool-use turns.
     const toolUseMessages =
       assistantMessage.message.content.filter(isToolUseLikeBlock)
 
+    // Step 7a: no tool calls means the assistant is trying to stop. Stop hooks
+    // may block and force a bounded continuation turn.
     if (!toolUseMessages.length) {
       const stopHookEvent =
         toolUseContext.agentId && toolUseContext.agentId !== 'main'
@@ -777,6 +822,8 @@ async function* queryCore(
       return
     }
 
+    // Step 7b: tool-use turns yield the assistant message first, then execute
+    // requested tools through the concurrency-aware queue.
     yield assistantMessage
     const siblingToolUseIDs = new Set<string>(toolUseMessages.map(_ => _.id))
     const toolQueue = new ToolUseQueue({
@@ -801,6 +848,7 @@ async function* queryCore(
 
     toolUseContext = toolQueue.getUpdatedContext()
 
+    // Step 8: append tool results and recurse for the next assistant turn.
     if (toolUseContext.abortController.signal.aborted) {
       yield createAssistantMessage(INTERRUPT_MESSAGE_FOR_TOOL_USE)
       return
@@ -1109,28 +1157,28 @@ async function* checkPermissionsAndCallTool(
 
   const permissionContextForCall =
     hookPermissionDecision === 'ask' &&
-    context.options?.toolPermissionContext &&
-    context.options.toolPermissionContext.mode !== 'default'
+      context.options?.toolPermissionContext &&
+      context.options.toolPermissionContext.mode !== 'default'
       ? ({
-          ...context,
-          options: {
-            ...context.options,
-            toolPermissionContext: {
-              ...context.options.toolPermissionContext,
-              mode: 'default',
-            },
+        ...context,
+        options: {
+          ...context.options,
+          toolPermissionContext: {
+            ...context.options.toolPermissionContext,
+            mode: 'default',
           },
-        } as const)
+        },
+      } as const)
       : context
 
   const permissionResult = effectiveShouldSkipPermissionCheck
     ? ({ result: true } as const)
     : await canUseTool(
-        tool,
-        normalizedInput,
-        { ...permissionContextForCall, toolUseId: toolUseID },
-        assistantMessage,
-      )
+      tool,
+      normalizedInput,
+      { ...permissionContextForCall, toolUseId: toolUseID },
+      assistantMessage,
+    )
   if (permissionResult.result === false) {
     yield createUserMessage([
       {

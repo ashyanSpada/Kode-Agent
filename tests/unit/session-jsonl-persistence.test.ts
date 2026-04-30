@@ -15,6 +15,12 @@ import {
   resetSessionJsonlStateForTests,
   sanitizeProjectNameForSessionStore,
 } from '@utils/protocol/kodeAgentSessionLog'
+import {
+  getToolUseIdFromToolResult,
+  isToolResultMessage,
+  loadSessionTraceRecords,
+  traceRecordsToMessages,
+} from '@utils/protocol/kodeAgentTrace'
 
 describe('JSONL session persistence (projects/*.jsonl)', () => {
   const originalConfigDir = process.env.KODE_CONFIG_DIR
@@ -76,6 +82,7 @@ describe('JSONL session persistence (projects/*.jsonl)', () => {
     expect(lines[0].messageId).toBe(user.uuid)
 
     expect(lines[1].type).toBe('user')
+    expect(lines[1].seq).toBe(1)
     expect(lines[1].uuid).toBe(user.uuid)
     expect(lines[1].parentUuid).toBe(null)
     expect(lines[1].sessionId).toBe(getKodeAgentSessionId())
@@ -88,6 +95,7 @@ describe('JSONL session persistence (projects/*.jsonl)', () => {
     expect(lines[1].message.role).toBe('user')
 
     expect(lines[2].type).toBe('assistant')
+    expect(lines[2].seq).toBe(2)
     expect(lines[2].uuid).toBe(assistant.uuid)
     expect(lines[2].parentUuid).toBe(user.uuid)
     expect(lines[2].sessionId).toBe(getKodeAgentSessionId())
@@ -132,5 +140,64 @@ describe('JSONL session persistence (projects/*.jsonl)', () => {
     )
     expect(userLine).toBeTruthy()
     expect(userLine.toolUseResult).toEqual({ filenames: ['a.ts'], numFiles: 1 })
+  })
+
+  test('loads sequential trace records and replays them as messages', () => {
+    const user = createUserMessage('run ls')
+    const assistant = {
+      ...createAssistantMessage('calling tool'),
+      costUSD: 0.25,
+      durationMs: 1234,
+      responseId: 'resp_trace_test',
+    } as any
+    const toolResultMessage = createUserMessage(
+      [
+        {
+          type: 'tool_result',
+          tool_use_id: 'toolu_trace',
+          is_error: false,
+          content: 'ok',
+        },
+      ],
+      {
+        data: { stdout: 'ok', exitCode: 0 },
+        resultForAssistant: 'ok',
+      },
+    )
+
+    appendSessionJsonlFromMessage({ message: user, toolUseContext: {} })
+    appendSessionJsonlFromMessage({ message: assistant, toolUseContext: {} })
+    appendSessionJsonlFromMessage({
+      message: toolResultMessage,
+      toolUseContext: {},
+    })
+
+    const records = loadSessionTraceRecords({
+      cwd: projectDir,
+      sessionId: getKodeAgentSessionId(),
+    })
+
+    expect(records.map(record => record.seq)).toEqual([1, 2, 3])
+    expect(records.map(record => record.uuid)).toEqual([
+      user.uuid,
+      assistant.uuid,
+      toolResultMessage.uuid,
+    ])
+
+    const replayed = traceRecordsToMessages(records)
+    expect(replayed.map(message => message.type)).toEqual([
+      'user',
+      'assistant',
+      'user',
+    ])
+    expect((replayed[1] as any).costUSD).toBe(0.25)
+    expect((replayed[1] as any).durationMs).toBe(1234)
+    expect((replayed[1] as any).responseId).toBe('resp_trace_test')
+    expect(isToolResultMessage(replayed[2]!)).toBe(true)
+    expect(getToolUseIdFromToolResult(replayed[2]!)).toBe('toolu_trace')
+    expect((replayed[2] as any).toolUseResult.data).toEqual({
+      stdout: 'ok',
+      exitCode: 0,
+    })
   })
 })

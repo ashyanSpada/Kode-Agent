@@ -14,3 +14,9 @@
 - Improved Manage Model List so adding models can reuse existing provider credentials and API base URLs.
 - Preserved environment API key overrides while falling back to configured local model profiles.
 - Added focused coverage for selecting reusable provider credentials.
+
+## 2026-04-30 20:34
+- 背景/Context: 增强会话 JSONL 可追溯性与回放能力，补齐顺序序号与关键响应元数据持久化 / Improved session JSONL traceability and replay by persisting sequence numbers and response metadata.
+- 提交摘要/Commit: feat: improve session trace persistence and replay metadata.
+- 文件/File: `src/utils/protocol/kodeAgentSessionLog.ts`、`src/utils/protocol/kodeAgentTrace.ts`、`tests/unit/session-jsonl-persistence.test.ts`。
+- 破坏性变更/Breaking: 无 / None.

@@ -24,6 +24,9 @@ type JsonlAssistantEntry = {
   message?: APIMessage
   isApiErrorMessage?: boolean
   requestId?: string
+  costUSD?: number
+  durationMs?: number
+  responseId?: string
 }
 
 type JsonlSummaryEntry = {
@@ -127,12 +130,15 @@ function normalizeLoadedAssistant(entry: JsonlAssistantEntry): Message | null {
   return {
     type: 'assistant',
     uuid: entry.uuid as any,
-    costUSD: 0,
-    durationMs: 0,
+    costUSD: typeof entry.costUSD === 'number' ? entry.costUSD : 0,
+    durationMs: typeof entry.durationMs === 'number' ? entry.durationMs : 0,
     message: entry.message as any,
     ...(entry.isApiErrorMessage ? { isApiErrorMessage: true } : {}),
     ...(typeof entry.requestId === 'string'
       ? { requestId: entry.requestId }
+      : {}),
+    ...(typeof entry.responseId === 'string'
+      ? { responseId: entry.responseId }
       : {}),
   } as any
 }

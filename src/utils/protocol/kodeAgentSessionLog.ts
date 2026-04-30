@@ -27,6 +27,7 @@ type PersistTarget =
 type JsonlEnvelopeBase = {
   cwd: string
   sessionId: string
+  seq: number
   version: string
   gitBranch?: string
   userType: string
@@ -39,31 +40,34 @@ type JsonlEnvelopeBase = {
   timestamp: string
 }
 
-type SessionJsonlEntry =
+export type SessionJsonlEntry =
   | (JsonlEnvelopeBase & {
-      type: 'user'
-      message: any
-      toolUseResult?: any
-    })
+    type: 'user'
+    message: any
+    toolUseResult?: any
+  })
   | (JsonlEnvelopeBase & {
-      type: 'assistant'
-      message: any
-      requestId?: string
-      isApiErrorMessage?: boolean
-    })
+    type: 'assistant'
+    message: any
+    requestId?: string
+    costUSD?: number
+    durationMs?: number
+    responseId?: string
+    isApiErrorMessage?: boolean
+  })
   | { type: 'summary'; summary: string; leafUuid: string }
   | { type: 'custom-title'; sessionId: string; customTitle: string }
   | { type: 'tag'; sessionId: string; tag: string }
   | {
-      type: 'file-history-snapshot'
+    type: 'file-history-snapshot'
+    messageId: string
+    snapshot: {
       messageId: string
-      snapshot: {
-        messageId: string
-        trackedFileBackups: Record<string, unknown>
-        timestamp: string
-      }
-      isSnapshotUpdate: boolean
+      trackedFileBackups: Record<string, unknown>
+      timestamp: string
     }
+    isSnapshotUpdate: boolean
+  }
 
 function getSessionStoreBaseDir(): string {
   return getKodeBaseDir()
@@ -109,24 +113,30 @@ function safeAppendJsonl(path: string, record: unknown): void {
   try {
     safeEnsureFile(path)
     appendFileSync(path, JSON.stringify(record) + '\n', 'utf8')
-  } catch {}
+  } catch { }
 }
 
 const lastUuidByFile = new Map<string, string | null>()
+const lastSeqByFile = new Map<string, number>()
 const snapshotWrittenByFile = new Set<string>()
 const slugBySessionId = new Map<string, string>()
 let currentSessionCustomTitle: string | null = null
 let currentSessionTag: string | null = null
 
-type LastPersistedInfo = { uuid: string | null; slug: string | null }
+type LastPersistedInfo = {
+  uuid: string | null
+  slug: string | null
+  seq: number
+}
 
 function safeReadLastPersistedInfo(filePath: string): LastPersistedInfo {
   try {
-    if (!existsSync(filePath)) return { uuid: null, slug: null }
+    if (!existsSync(filePath)) return { uuid: null, slug: null, seq: 0 }
     const content = readFileSync(filePath, 'utf8')
     const lines = content.split('\n')
 
     let lastSlug: string | null = null
+    let lastSeq = 0
     for (let i = lines.length - 1; i >= 0; i--) {
       const line = lines[i]?.trim()
       if (!line) continue
@@ -142,14 +152,18 @@ function safeReadLastPersistedInfo(filePath: string): LastPersistedInfo {
         lastSlug = parsed.slug.trim()
       }
 
+      if (typeof parsed.seq === 'number' && Number.isFinite(parsed.seq)) {
+        lastSeq = Math.max(lastSeq, parsed.seq)
+      }
+
       if (typeof parsed.uuid === 'string' && parsed.uuid) {
-        return { uuid: parsed.uuid, slug: lastSlug }
+        return { uuid: parsed.uuid, slug: lastSlug, seq: lastSeq }
       }
     }
 
-    return { uuid: null, slug: lastSlug }
+    return { uuid: null, slug: lastSlug, seq: lastSeq }
   } catch {
-    return { uuid: null, slug: null }
+    return { uuid: null, slug: null, seq: 0 }
   }
 }
 
@@ -212,7 +226,7 @@ function ensureFileHistorySnapshot(
       snapshotWrittenByFile.add(filePath)
       return
     }
-  } catch {}
+  } catch { }
 
   const now = new Date().toISOString()
   safeAppendJsonl(filePath, {
@@ -260,9 +274,11 @@ export function appendSessionJsonlFromMessage(args: {
   if (!lastUuidByFile.has(filePath)) {
     const info = safeReadLastPersistedInfo(filePath)
     lastUuidByFile.set(filePath, info.uuid)
+    lastSeqByFile.set(filePath, info.seq)
     if (info.slug) slugBySessionId.set(sessionId, info.slug)
   }
   const previousUuid = lastUuidByFile.get(filePath) ?? null
+  const seq = (lastSeqByFile.get(filePath) ?? 0) + 1
 
   const slug = getOrCreateSessionSlug(sessionId)
 
@@ -277,6 +293,7 @@ export function appendSessionJsonlFromMessage(args: {
     userType,
     cwd,
     sessionId,
+    seq,
     version: MACRO.VERSION,
     ...(gitBranch ? { gitBranch } : {}),
     agentId,
@@ -288,25 +305,35 @@ export function appendSessionJsonlFromMessage(args: {
   const record: SessionJsonlEntry =
     message.type === 'user'
       ? {
-          ...base,
-          type: 'user',
-          message: message.message,
-          ...(message.toolUseResult?.data !== undefined
-            ? { toolUseResult: message.toolUseResult.data }
-            : {}),
-        }
+        ...base,
+        type: 'user',
+        message: message.message,
+        ...(message.toolUseResult?.data !== undefined
+          ? { toolUseResult: message.toolUseResult.data }
+          : {}),
+      }
       : {
-          ...base,
-          type: 'assistant',
-          message: message.message,
-          ...(typeof (message as any).requestId === 'string'
-            ? { requestId: String((message as any).requestId) }
-            : {}),
-          ...(message.isApiErrorMessage ? { isApiErrorMessage: true } : {}),
-        }
+        ...base,
+        type: 'assistant',
+        message: message.message,
+        ...(typeof (message as any).requestId === 'string'
+          ? { requestId: String((message as any).requestId) }
+          : {}),
+        ...(typeof message.costUSD === 'number'
+          ? { costUSD: message.costUSD }
+          : {}),
+        ...(typeof message.durationMs === 'number'
+          ? { durationMs: message.durationMs }
+          : {}),
+        ...(typeof (message as any).responseId === 'string'
+          ? { responseId: String((message as any).responseId) }
+          : {}),
+        ...(message.isApiErrorMessage ? { isApiErrorMessage: true } : {}),
+      }
 
   safeAppendJsonl(filePath, record)
   lastUuidByFile.set(filePath, message.uuid)
+  lastSeqByFile.set(filePath, seq)
 }
 
 export function appendSessionSummaryRecord(args: {
@@ -363,6 +390,7 @@ export function getCurrentSessionTag(): string | null {
 
 export function resetSessionJsonlStateForTests(): void {
   lastUuidByFile.clear()
+  lastSeqByFile.clear()
   snapshotWrittenByFile.clear()
   slugBySessionId.clear()
   gitBranchCache = null
