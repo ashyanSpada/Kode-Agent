@@ -1,4 +1,4 @@
-import type { Command } from '@commands'
+import { isSlashInvocableCommand, type Command } from '@commands'
 import type { UnifiedSuggestion } from './types'
 
 export function generateSlashCommandSuggestions(args: {
@@ -6,7 +6,7 @@ export function generateSlashCommandSuggestions(args: {
   prefix: string
 }): UnifiedSuggestion[] {
   const { commands, prefix } = args
-  const filteredCommands = commands.filter(cmd => !cmd.isHidden)
+  const filteredCommands = commands.filter(isSlashInvocableCommand)
 
   if (!prefix) {
     return filteredCommands.map(cmd => ({

@@ -15,7 +15,7 @@ import * as Protocol from './protocol'
 import { MACRO } from '@constants/macros'
 import { PRODUCT_COMMAND } from '@constants/product'
 import { getContext } from '@context'
-import { getCommands, type Command } from '@commands'
+import { getCommands, isSlashInvocableCommand, type Command } from '@commands'
 import { getTools } from '@tools'
 import type { Tool, ToolUseContext } from '@tool'
 import {
@@ -1473,7 +1473,7 @@ export class KodeAcpAgent {
 
   private sendAvailableCommands(session: SessionState): void {
     const availableCommands: Protocol.AvailableCommand[] = session.commands
-      .filter(c => !c.isHidden)
+      .filter(isSlashInvocableCommand)
       .map(c => ({
         name: c.userFacingName(),
         description: c.description,

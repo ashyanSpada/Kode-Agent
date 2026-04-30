@@ -135,6 +135,10 @@ export function hasCommand(commandName: string, commands: Command[]): boolean {
   )
 }
 
+export function isSlashInvocableCommand(command: Command): boolean {
+  return !command.isHidden || (command as any).isSkill === true
+}
+
 export function getCommand(commandName: string, commands: Command[]): Command {
   const command = commands.find(
     _ => _.userFacingName() === commandName || _.aliases?.includes(commandName),

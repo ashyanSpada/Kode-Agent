@@ -20,3 +20,9 @@
 - 提交摘要/Commit: feat: improve session trace persistence and replay metadata.
 - 文件/File: `src/utils/protocol/kodeAgentSessionLog.ts`、`src/utils/protocol/kodeAgentTrace.ts`、`tests/unit/session-jsonl-persistence.test.ts`。
 - 破坏性变更/Breaking: 无 / None.
+
+## 2026-04-30 20:59
+- 背景/Context: 修复隐藏技能命令在 Slash 输入、补全列表和 ACP 可用命令中的可见性不一致问题 / Aligned hidden skill command visibility across slash input, completion suggestions, and ACP available-command reporting.
+- 提交摘要/Commit: fix: expose hidden skill commands for slash invocation surfaces.
+- 文件/File: `src/commands/index.ts`、`src/entrypoints/cli/printMode.ts`、`src/utils/completion/slashCommandSuggestions.ts`、`src/acp/kodeAcpAgent.ts`、`tests/unit/agent-skills-compat.test.ts`。
+- 破坏性变更/Breaking: 无 / None.

@@ -1,5 +1,6 @@
 import { addToHistory } from '@history'
 import { hasPermissionsToUseTool } from '@permissions'
+import { isSlashInvocableCommand } from '@commands'
 import { dateToFilename } from '@utils/log'
 import { createStdioCanUseTool } from './stdio/canUseTool'
 import { createPrintModeControlRequestHandler } from './stdio/controlRequestHandler'
@@ -386,7 +387,9 @@ export async function runPrintMode({
   const slashCommands =
     disableSlashCommands === true
       ? undefined
-      : commands.filter(c => !c.isHidden).map(c => `/${c.userFacingName()}`)
+      : commands
+          .filter(isSlashInvocableCommand)
+          .map(c => `/${c.userFacingName()}`)
   const initMsg = makeSdkInitMessage({
     sessionId: sessionIdForSdk,
     cwd,

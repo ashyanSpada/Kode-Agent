@@ -7,6 +7,8 @@ import {
   reloadCustomCommands,
 } from '@services/customCommands'
 import { SkillTool } from '@tools/ai/SkillTool/SkillTool'
+import { generateSlashCommandSuggestions } from '@utils/completion/slashCommandSuggestions'
+import { processUserInput } from '@utils/messages'
 import { setCwd } from '@utils/state'
 
 async function withEnv<T>(
@@ -191,5 +193,96 @@ describe('Agent Skills compatibility (discovery + prompt)', () => {
         expect(prompt).toContain(`<location>\n${skillFile}\n</location>`)
       },
     )
+  })
+
+  test('direct /skill input expands hidden skills as slash commands', async () => {
+    const skillCommand = {
+      type: 'prompt',
+      name: 'pdf',
+      description: 'PDF skill',
+      isEnabled: true,
+      isHidden: true,
+      isSkill: true,
+      progressMessage: 'loading',
+      userFacingName() {
+        return 'pdf'
+      },
+      async getPromptForCommand(args: string) {
+        return [{ role: 'user', content: `Read PDF: ${args}` }]
+      },
+    } as any
+
+    const messages = await processUserInput(
+      '/pdf report.pdf',
+      'prompt',
+      () => {},
+      {
+        options: {
+          commands: [skillCommand],
+          tools: [],
+          verbose: false,
+          disableSlashCommands: false,
+        },
+        messageId: undefined,
+        abortController: new AbortController(),
+        readFileTimestamps: {},
+        setForkConvoWithMessagesOnTheNextRender() {},
+      } as any,
+      null,
+    )
+
+    expect(messages.length).toBe(2)
+    expect(messages[0]?.type).toBe('user')
+    expect((messages[0] as any).message.content).toContain(
+      '<command-name>pdf</command-name>',
+    )
+    expect((messages[0] as any).message.content).toContain(
+      '<command-message>pdf is loading…</command-message>',
+    )
+    expect(messages[1]?.type).toBe('user')
+    expect((messages[1] as any).message.content).toBe('Read PDF: report.pdf')
+    expect((messages[1] as any).options).toMatchObject({
+      isCustomCommand: true,
+      commandName: 'pdf',
+      commandArgs: 'report.pdf',
+    })
+  })
+
+  test('slash completion advertises hidden skills but not other hidden commands', () => {
+    const suggestions = generateSlashCommandSuggestions({
+      prefix: '',
+      commands: [
+        {
+          type: 'prompt',
+          name: 'pdf',
+          description: 'PDF skill',
+          isEnabled: true,
+          isHidden: true,
+          isSkill: true,
+          progressMessage: 'loading',
+          userFacingName() {
+            return 'pdf'
+          },
+          async getPromptForCommand() {
+            return []
+          },
+        } as any,
+        {
+          type: 'local',
+          name: 'internal',
+          description: 'Internal command',
+          isEnabled: true,
+          isHidden: true,
+          userFacingName() {
+            return 'internal'
+          },
+          async call() {
+            return ''
+          },
+        } as any,
+      ],
+    })
+
+    expect(suggestions.map(item => item.displayValue)).toEqual(['/pdf'])
   })
 })
