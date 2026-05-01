@@ -50,3 +50,9 @@
 - 提交摘要/Commit: feat: add skill inspection commands for CLI and slash usage.
 - 文件/File: `src/commands/skill.ts`、`src/entrypoints/cli/runCli.tsx`、`src/commands/index.ts`、`tests/unit/skill-command.test.ts`、`docs/capability-enhancement-ideas.md`。
 - 破坏性变更/Breaking: 无 / None.
+
+## 2026-05-01 18:10
+- 背景/Context: 实现权限可解释性 API，输出命中规则来源、决策原因与建议规则，帮助定位权限策略行为 / Implemented a permission explainability API that reports matched rule source, decision reasoning, and suggested rules for permission debugging.
+- 提交摘要/Commit: feat: add permission decision explainability API.
+- 文件/File: `src/core/permissions/explain.ts`、`src/core/permissions/index.ts`、`src/core/permissions/engine/index.ts`、`tests/unit/permission-explainability.test.ts`、`docs/capability-enhancement-ideas.md`。
+- 破坏性变更/Breaking: 无 / None.

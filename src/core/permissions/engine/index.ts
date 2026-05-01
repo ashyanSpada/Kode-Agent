@@ -27,14 +27,8 @@ import { logError } from '@utils/log'
 import { grantWritePermissionForPath } from '@utils/permissions/filesystem'
 import { getCwd } from '@utils/state'
 import { PRODUCT_NAME } from '@constants/product'
-import {
-  getPlanConversationKey,
-  getPlanFilePath,
-  isPlanModeEnabled,
-} from '@utils/plan/planMode'
+import { isPlanModeEnabled } from '@utils/plan/planMode'
 import { getPermissionMode } from '@utils/permissions/permissionModeState'
-import { isAbsolute, resolve } from 'path'
-import { homedir } from 'os'
 import { minimatch } from 'minimatch'
 import { persistToolPermissionUpdateToDisk } from '@utils/permissions/toolPermissionSettings'
 import { applyToolPermissionContextUpdateForConversationKey } from '@utils/permissions/toolPermissionContextState'
@@ -60,7 +54,6 @@ import {
 import { parseMcpToolName } from '@utils/permissions/ruleString'
 import type { PermissionResult } from '../ui-helpers'
 import {
-  PLAN_MODE_ALLOWED_NON_READONLY_TOOLS,
   bashToolHasPermission,
   getPermissionKey,
   isSafeBashCommand,
@@ -85,29 +78,6 @@ function flattenPermissionRuleGroups(
     }
   }
   return out
-}
-
-function isAllowedToolUseInPlanMode(
-  tool: Tool,
-  input: { [k: string]: unknown },
-  context: ToolUseContext,
-): boolean {
-  if (tool.isReadOnly(input as never)) return true
-  if (PLAN_MODE_ALLOWED_NON_READONLY_TOOLS.has(tool.name)) return true
-
-  if (tool === FileWriteTool || tool === FileEditTool) {
-    const filePath = typeof input.file_path === 'string' ? input.file_path : ''
-    if (!filePath) return false
-
-    const conversationKey = getPlanConversationKey(context)
-    const allowedPlanFile = getPlanFilePath(context.agentId, conversationKey)
-    const resolvedFilePath = isAbsolute(filePath)
-      ? resolve(filePath)
-      : resolve(getCwd(), filePath)
-    return resolvedFilePath === resolve(allowedPlanFile)
-  }
-
-  return false
 }
 
 export const hasPermissionsToUseTool: CanUseToolFn = async (
@@ -740,53 +710,6 @@ export const hasPermissionsToUseTool: CanUseToolFn = async (
   }
 
   return permissionResult
-}
-
-function normalizeGlobPath(p: string): string {
-  return p.replace(/\\/g, '/')
-}
-
-function resolveAbsolutePathForPermission(p: string): string {
-  const trimmed = String(p || '').trim()
-  if (!trimmed) return resolve(getCwd())
-  return isAbsolute(trimmed) ? resolve(trimmed) : resolve(getCwd(), trimmed)
-}
-
-function resolvePermissionPathPattern(pattern: string): string {
-  const trimmed = pattern.trim()
-  if (!trimmed) return trimmed
-
-  if (trimmed === '~') {
-    return resolve(homedir())
-  }
-  if (trimmed.startsWith('~/') || trimmed.startsWith('~\\')) {
-    return resolve(homedir(), trimmed.slice(2))
-  }
-
-  return isAbsolute(trimmed) ? resolve(trimmed) : resolve(getCwd(), trimmed)
-}
-
-function toolRuleMatchesPath(
-  rule: string,
-  toolName: string,
-  absolutePath: string,
-): boolean {
-  if (rule === toolName) return true
-  const openParenIndex = rule.indexOf('(')
-  if (openParenIndex === -1 || !rule.endsWith(')')) return false
-
-  const name = rule.slice(0, openParenIndex)
-  if (name !== toolName) return false
-
-  const ruleContent = rule.slice(openParenIndex + 1, -1).trim()
-  if (!ruleContent) return false
-
-  const absolutePattern = resolvePermissionPathPattern(ruleContent)
-  return minimatch(
-    normalizeGlobPath(absolutePath),
-    normalizeGlobPath(absolutePattern),
-    { dot: true, nocase: process.platform === 'win32' },
-  )
 }
 
 function getSkillPrefixes(skillName: string): string[] {

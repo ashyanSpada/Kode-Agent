@@ -13,7 +13,7 @@ This note captures candidate improvements for extending Kode Agent's capabilitie
 | 5 | Capability Registry | Implemented |
 | 6 | Better Skill Discovery UX | Implemented |
 | 7 | Replay-Based Regression Tests | Pending |
-| 8 | Permission Explainability | Pending |
+| 8 | Permission Explainability | Implemented |
 | 9 | Agent and Skill Interop | Pending |
 | 10 | Golden Protocol Tests | Pending |
 
@@ -185,7 +185,7 @@ Good targets:
 
 ## 8. Permission Explainability
 
-Status: Pending.
+Status: Implemented.
 
 Add an explanation API:
 
@@ -202,6 +202,14 @@ Return:
 - suggested rule
 
 This can improve permission prompts, logs, tests, and debugging.
+
+Implemented pieces:
+
+- `explainPermissionDecision(tool, input, context)` exported from `@permissions`
+- explanation includes behavior (`allow`, `ask`, `deny`), matched rule, rule source, reason, permission mode, and suggested rules
+- delegates the actual decision to `hasPermissionsToUseTool` so explanations cannot drift from enforcement
+- supports project config rules, session permission-context rules, command-scoped rules, Bash, slash command, Skill, WebFetch/WebSearch, MCP wildcard, and generic tool rules
+- regression coverage in `tests/unit/permission-explainability.test.ts`
 
 ## 9. Agent and Skill Interop
 
