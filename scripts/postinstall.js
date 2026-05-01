@@ -133,7 +133,7 @@ async function maybeInstallBinary() {
 }
 
 async function postinstallNotice() {
-  safeLog('✅ @shareai-lab/kode installed. Commands available: kode, kwa, kd')
+  safeLog('✅ @shareai-lab/kode installed. Commands available: kode, oma, kwa, kd')
   safeLog('   If shell cannot find them, reload your terminal or reinstall globally:')
   safeLog('   npm i -g @shareai-lab/kode  (or use: npx @shareai-lab/kode)')
   await maybeInstallBinary()

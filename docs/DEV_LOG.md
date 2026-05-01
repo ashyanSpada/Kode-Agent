@@ -56,3 +56,9 @@
 - 提交摘要/Commit: feat: add permission decision explainability API.
 - 文件/File: `src/core/permissions/explain.ts`、`src/core/permissions/index.ts`、`src/core/permissions/engine/index.ts`、`tests/unit/permission-explainability.test.ts`、`docs/capability-enhancement-ideas.md`。
 - 破坏性变更/Breaking: 无 / None.
+
+## 2026-05-01 20:37
+- 背景/Context: 增加 `oma` 全局命令别名以对齐复刻计划（oh-my-agent），将 `parseStreamingResponse` 改为抽象以去除无效默认生成器实现，并记录复刻步骤文档 / Added `oma` npm bin alias aligned with reproduction identity, made `parseStreamingResponse` abstract to drop the bogus default generator, and documented reproduction phases.
+- 提交摘要/Commit: feat: add oma bin alias and require streaming parser on adapters.
+- 文件/File: `package.json`、`scripts/postinstall.js`、`src/services/ai/adapters/base.ts`、`docs/reproduction-plan.md`。
+- 破坏性变更/Breaking: 无 / None.

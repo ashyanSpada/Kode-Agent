@@ -65,14 +65,10 @@ export abstract class ModelAPIAdapter {
   abstract createRequest(params: UnifiedRequestParams): any
   abstract parseResponse(response: any): Promise<UnifiedResponse>
   abstract buildTools(tools: Tool[]): any
-
-  async *parseStreamingResponse?(
+  abstract parseStreamingResponse(
     response: any,
     signal?: AbortSignal,
-  ): AsyncGenerator<StreamingEvent> {
-    return
-    yield
-  }
+  ): AsyncGenerator<StreamingEvent>
 
   protected resetCumulativeUsage(): void {
     this.cumulativeUsage = { input: 0, output: 0 }

@@ -3,6 +3,7 @@
   "version": "2.0.2",
   "bin": {
     "kode": "cli.js",
+    "oma": "cli.js",
     "kwa": "cli.js",
     "kd": "cli.js",
     "kode-acp": "cli-acp.js"
