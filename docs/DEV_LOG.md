@@ -38,3 +38,9 @@
 - 提交摘要/Commit: refactor: unify prompt command invocation for skill and slash tools.
 - 文件/File: `src/utils/commands/promptCommandInvocation.ts`、`src/tools/ai/SkillTool/SkillTool.tsx`、`src/tools/interaction/SlashCommandTool/SlashCommandTool.tsx`、`tests/unit/skill-slash-permission-parity.test.ts`、`docs/skill-invocation-unification.md`。
 - 破坏性变更/Breaking: 无 / None.
+
+## 2026-05-01 17:33
+- 背景/Context: 引入 capability registry 统一工具/命令/技能能力视图，并复用到 ACP、print mode 与 slash 补全链路 / Introduced a capability registry to unify tool/command/skill capability views and reused it across ACP, print mode, and slash completion flows.
+- 提交摘要/Commit: feat: add capability registry and wire command/tool surfaces.
+- 文件/File: `src/utils/capabilities/registry.ts`、`src/acp/kodeAcpAgent.ts`、`src/entrypoints/cli/printMode.ts`、`src/utils/completion/slashCommandSuggestions.ts`、`tests/unit/capability-registry.test.ts`。
+- 破坏性变更/Breaking: 无 / None.

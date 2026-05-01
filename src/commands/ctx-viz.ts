@@ -1,7 +1,5 @@
-// @ts-nocheck
 import type { Command } from '@commands'
 import type { Tool } from '@tool'
-import Table from 'cli-table3'
 import { getSystemPrompt } from '@constants/prompts'
 import { getContext } from '@context'
 import { zodToJsonSchema } from 'zod-to-json-schema'
@@ -23,6 +21,18 @@ function getContextSections(text: string): Section[] {
   const sections: Section[] = []
 
   const firstContextIndex = text.indexOf('<context')
+
+  if (firstContextIndex === -1) {
+    const coreSysprompt = text.trim()
+    return coreSysprompt
+      ? [
+          {
+            title: 'Core Sysprompt',
+            content: coreSysprompt,
+          },
+        ]
+      : []
+  }
 
   if (firstContextIndex > 0) {
     const coreSysprompt = text.slice(0, firstContextIndex).trim()
@@ -80,37 +90,45 @@ function formatByteCount(bytes: number): string {
   return `${Math.round(kb * 10) / 10}kb`
 }
 
+function createTextTable(rows: string[][]): string {
+  const widths = rows[0]?.map((_, index) =>
+    Math.max(...rows.map(row => (row[index] ?? '').length)),
+  )
+
+  if (!widths || widths.length === 0) return ''
+
+  const formatRow = (row: string[]) =>
+    `| ${row.map((cell, index) => cell.padEnd(widths[index] ?? 0)).join(' | ')} |`
+
+  const divider = `|-${widths.map(width => '-'.repeat(width)).join('-|-')}-|`
+  const [head, ...body] = rows
+
+  return [formatRow(head ?? []), divider, ...body.map(formatRow)].join('\n')
+}
+
 function createSummaryTable(
   systemText: string,
   systemSections: Section[],
   tools: ToolSummary[],
   messages: unknown,
 ): string {
-  const table = new Table({
-    head: ['Component', 'Tokens', 'Size', '% Used'],
-    style: { head: ['bold'] },
-    chars: {
-      mid: '─',
-      'left-mid': '├',
-      'mid-mid': '┼',
-      'right-mid': '┤',
-    },
-  })
+  const rows = [['Component', 'Tokens', 'Size', '% Used']]
 
-  const messagesStr = JSON.stringify(messages)
+  const messagesStr = JSON.stringify(messages) ?? ''
   const toolsStr = JSON.stringify(tools)
 
   const total = systemText.length + toolsStr.length + messagesStr.length
-  const getPercentage = (n: number) => `${Math.round((n / total) * 100)}%`
+  const getPercentage = (n: number) =>
+    total > 0 ? `${Math.round((n / total) * 100)}%` : '0%'
 
-  table.push([
+  rows.push([
     'System prompt',
     formatTokenCount(systemText.length),
     formatByteCount(systemText.length),
     getPercentage(systemText.length),
   ])
   for (const section of systemSections) {
-    table.push([
+    rows.push([
       `  ${section.title}`,
       formatTokenCount(section.content.length),
       formatByteCount(section.content.length),
@@ -118,14 +136,14 @@ function createSummaryTable(
     ])
   }
 
-  table.push([
+  rows.push([
     'Tool definitions',
     formatTokenCount(toolsStr.length),
     formatByteCount(toolsStr.length),
     getPercentage(toolsStr.length),
   ])
   for (const tool of tools) {
-    table.push([
+    rows.push([
       `  ${tool.name}`,
       formatTokenCount(tool.description.length),
       formatByteCount(tool.description.length),
@@ -133,7 +151,7 @@ function createSummaryTable(
     ])
   }
 
-  table.push(
+  rows.push(
     [
       'Messages',
       formatTokenCount(messagesStr.length),
@@ -143,7 +161,7 @@ function createSummaryTable(
     ['Total', formatTokenCount(total), formatByteCount(total), '100%'],
   )
 
-  return table.toString()
+  return createTextTable(rows)
 }
 
 const command: Command = {
@@ -171,19 +189,21 @@ const command: Command = {
       systemPrompt += `\n<context name="${name}">${content}</context>`
     }
 
-    const tools = rawTools.map(t => {
-      const fullPrompt = t.prompt({ safeMode: false })
-      const schema = JSON.stringify(
-        'inputJSONSchema' in t && t.inputJSONSchema
-          ? t.inputJSONSchema
-          : zodToJsonSchema(t.inputSchema),
-      )
+    const tools = await Promise.all(
+      rawTools.map(async t => {
+        const fullPrompt = await t.prompt({ safeMode: false })
+        const schema = JSON.stringify(
+          'inputJSONSchema' in t && t.inputJSONSchema
+            ? t.inputJSONSchema
+            : zodToJsonSchema(t.inputSchema as any),
+        )
 
-      return {
-        name: t.name,
-        description: `${fullPrompt}\n\nSchema:\n${schema}`,
-      }
-    })
+        return {
+          name: t.name,
+          description: `${fullPrompt}\n\nSchema:\n${schema}`,
+        }
+      }),
+    )
 
     const messages = getMessagesGetter()()
 
@@ -193,4 +213,3 @@ const command: Command = {
 }
 
 export default command
-// @ts-nocheck

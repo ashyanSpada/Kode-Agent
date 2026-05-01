@@ -15,7 +15,7 @@ import * as Protocol from './protocol'
 import { MACRO } from '@constants/macros'
 import { PRODUCT_COMMAND } from '@constants/product'
 import { getContext } from '@context'
-import { getCommands, isSlashInvocableCommand, type Command } from '@commands'
+import { getCommands, type Command } from '@commands'
 import { getTools } from '@tools'
 import type { Tool, ToolUseContext } from '@tool'
 import {
@@ -31,6 +31,7 @@ import { logError } from '@utils/log'
 import { setCwd, setOriginalCwd } from '@utils/state'
 import { grantReadPermissionForOriginalDir } from '@utils/permissions/filesystem'
 import { getKodeBaseDir } from '@utils/config/env'
+import { getSlashInvocableCapabilities } from '@utils/capabilities/registry'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js'
@@ -1472,12 +1473,13 @@ export class KodeAcpAgent {
   }
 
   private sendAvailableCommands(session: SessionState): void {
-    const availableCommands: Protocol.AvailableCommand[] = session.commands
-      .filter(isSlashInvocableCommand)
-      .map(c => ({
-        name: c.userFacingName(),
+    const availableCommands: Protocol.AvailableCommand[] =
+      getSlashInvocableCapabilities(session.commands).map(c => ({
+        name: c.name,
         description: c.description,
-        ...(c.argumentHint ? { input: { hint: c.argumentHint } } : {}),
+        ...(c.kind === 'slash-command' && c.argumentHint
+          ? { input: { hint: c.argumentHint } }
+          : {}),
       }))
 
     this.peer.sendNotification('session/update', {

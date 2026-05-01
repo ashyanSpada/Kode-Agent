@@ -1,4 +1,5 @@
-import { isSlashInvocableCommand, type Command } from '@commands'
+import type { Command } from '@commands'
+import { getSlashInvocableCapabilities } from '@utils/capabilities/registry'
 import type { UnifiedSuggestion } from './types'
 
 export function generateSlashCommandSuggestions(args: {
@@ -6,12 +7,12 @@ export function generateSlashCommandSuggestions(args: {
   prefix: string
 }): UnifiedSuggestion[] {
   const { commands, prefix } = args
-  const filteredCommands = commands.filter(isSlashInvocableCommand)
+  const filteredCommands = getSlashInvocableCapabilities(commands)
 
   if (!prefix) {
     return filteredCommands.map(cmd => ({
-      value: cmd.userFacingName(),
-      displayValue: `/${cmd.userFacingName()}`,
+      value: cmd.name,
+      displayValue: `/${cmd.name}`,
       type: 'command' as const,
       score: 100,
     }))
@@ -19,18 +20,18 @@ export function generateSlashCommandSuggestions(args: {
 
   return filteredCommands
     .filter(cmd => {
-      const names = [cmd.userFacingName(), ...(cmd.aliases || [])]
+      const names = [
+        cmd.name,
+        ...(cmd.kind === 'slash-command' ? cmd.aliases : []),
+      ]
       return names.some(name =>
         name.toLowerCase().startsWith(prefix.toLowerCase()),
       )
     })
     .map(cmd => ({
-      value: cmd.userFacingName(),
-      displayValue: `/${cmd.userFacingName()}`,
+      value: cmd.name,
+      displayValue: `/${cmd.name}`,
       type: 'command' as const,
-      score:
-        100 -
-        prefix.length +
-        (cmd.userFacingName().startsWith(prefix) ? 10 : 0),
+      score: 100 - prefix.length + (cmd.name.startsWith(prefix) ? 10 : 0),
     }))
 }

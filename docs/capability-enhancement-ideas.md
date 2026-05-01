@@ -10,7 +10,7 @@ This note captures candidate improvements for extending Kode Agent's capabilitie
 | 2 | Skill Invocation Unification | Implemented |
 | 3 | Trace-Aware Tool Fixtures | Pending |
 | 4 | Session Log Integrity Checks | Pending |
-| 5 | Capability Registry | Not planned |
+| 5 | Capability Registry | Implemented |
 | 6 | Better Skill Discovery UX | Pending |
 | 7 | Replay-Based Regression Tests | Pending |
 | 8 | Permission Explainability | Pending |
@@ -103,7 +103,7 @@ This would make session persistence safer as it becomes a central trace format.
 
 ## 5. Capability Registry
 
-Status: Not planned.
+Status: Implemented.
 
 Introduce a normalized registry for tools, slash commands, skills, MCP tools, and agents:
 
@@ -122,6 +122,15 @@ Benefits:
 - one source for stream-json init
 - easier permission explanations
 - better diagnostics
+
+Implemented pieces:
+
+- normalized registry types and builders in `src/utils/capabilities/registry.ts`
+- tool, MCP tool, slash command, skill, and agent capability shapes
+- slash command completion now reads slash-invocable command/skill capabilities
+- ACP available commands now use the same slash-invocable capability source
+- stream-json init tool and slash command lists now use capability helpers
+- direct registry coverage in `tests/unit/capability-registry.test.ts`
 
 ## 6. Better Skill Discovery UX
 
