@@ -9,6 +9,20 @@ export function getCompletionContext(args: {
   const disableSlashCommands = args.disableSlashCommands === true
   if (!input) return null
 
+  if (!disableSlashCommands) {
+    const beforeCursor = input.slice(0, cursorOffset)
+    const traceReplayMatch = beforeCursor.match(/^\/trace\s+replay\s+(\S*)$/)
+    if (traceReplayMatch) {
+      const prefix = traceReplayMatch[1] ?? ''
+      return {
+        type: 'trace',
+        prefix,
+        startPos: cursorOffset - prefix.length,
+        endPos: cursorOffset,
+      }
+    }
+  }
+
   let start = cursorOffset
 
   while (start > 0) {

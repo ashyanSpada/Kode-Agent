@@ -27,6 +27,7 @@ import rename from './rename'
 import statusline from './statusline'
 import tag from './tag'
 import todos from './todos'
+import trace from './trace'
 import type { Tool, ToolUseContext } from '@tool'
 import resume from './resume'
 import agents from './agents'
@@ -114,6 +115,7 @@ const COMMANDS = memoize((): Command[] => [
   bug,
   review,
   todos,
+  trace,
   ...(isAnthropicAuthEnabled() ? [logout, login()] : []),
   ...INTERNAL_ONLY_COMMANDS,
 ])

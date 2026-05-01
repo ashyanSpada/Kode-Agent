@@ -1,7 +1,7 @@
 export interface UnifiedSuggestion {
   value: string
   displayValue: string
-  type: 'command' | 'agent' | 'file' | 'ask'
+  type: 'command' | 'agent' | 'file' | 'ask' | 'trace'
   icon?: string
   score: number
   metadata?: any
@@ -10,7 +10,7 @@ export interface UnifiedSuggestion {
 }
 
 export interface CompletionContext {
-  type: 'command' | 'agent' | 'file' | null
+  type: 'command' | 'agent' | 'file' | 'trace' | null
   prefix: string
   startPos: number
   endPos: number

@@ -26,3 +26,9 @@
 - 提交摘要/Commit: fix: expose hidden skill commands for slash invocation surfaces.
 - 文件/File: `src/commands/index.ts`、`src/entrypoints/cli/printMode.ts`、`src/utils/completion/slashCommandSuggestions.ts`、`src/acp/kodeAcpAgent.ts`、`tests/unit/agent-skills-compat.test.ts`。
 - 破坏性变更/Breaking: 无 / None.
+
+## 2026-05-01 16:50
+- 背景/Context: 新增 trace replay 命令与补全支持，用于复放并校验会话 JSONL 轨迹完整性 / Added trace replay command and completion support to replay and validate session JSONL trace integrity.
+- 提交摘要/Commit: feat: add trace replay command and completion support.
+- 文件/File: `src/commands/trace.ts`、`src/utils/protocol/kodeAgentTraceReplay.ts`、`src/utils/completion/traceReplaySuggestions.ts`、`src/utils/completion/context.ts`、`tests/unit/trace-replay.test.ts`。
+- 破坏性变更/Breaking: 无 / None.

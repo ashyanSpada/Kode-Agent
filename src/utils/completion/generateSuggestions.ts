@@ -3,6 +3,7 @@ import type { CompletionContext, UnifiedSuggestion } from './types'
 import { generateFileSuggestions } from './fileSuggestions'
 import { generateMentionSuggestions } from './mentionSuggestions'
 import { generateSlashCommandSuggestions } from './slashCommandSuggestions'
+import { generateTraceReplaySuggestions } from './traceReplaySuggestions'
 import { generateUnixCommandSuggestions } from './unixCommandSuggestions'
 
 export function generateSuggestionsForContext(args: {
@@ -29,6 +30,11 @@ export function generateSuggestionsForContext(args: {
       return generateSlashCommandSuggestions({
         commands,
         prefix: context.prefix,
+      })
+    case 'trace':
+      return generateTraceReplaySuggestions({
+        prefix: context.prefix,
+        cwd,
       })
     case 'agent': {
       const mentionSuggestions = generateMentionSuggestions({

@@ -301,6 +301,8 @@ export function useUnifiedCompletion({
 
       if (context.type === 'command') {
         completion = `/${suggestion.value} `
+      } else if (context.type === 'trace') {
+        completion = `${suggestion.value} `
       } else if (context.type === 'agent') {
         if (suggestion.type === 'agent') {
           completion = `@${suggestion.value} `
@@ -392,6 +394,8 @@ export function useUnifiedCompletion({
         let preview: string
         if (state.context.type === 'command') {
           preview = `/${nextSuggestion.value}`
+        } else if (state.context.type === 'trace') {
+          preview = nextSuggestion.value
         } else if (state.context.type === 'agent') {
           preview = `@${nextSuggestion.value}`
         } else if (nextSuggestion.isSmartMatch) {
@@ -442,6 +446,8 @@ export function useUnifiedCompletion({
       let preview: string
       if (context.type === 'command') {
         preview = `/${firstSuggestion.value}`
+      } else if (context.type === 'trace') {
+        preview = firstSuggestion.value
       } else if (context.type === 'agent') {
         preview = `@${firstSuggestion.value}`
       } else if (firstSuggestion.isSmartMatch) {
@@ -482,6 +488,8 @@ export function useUnifiedCompletion({
 
         if (state.context.type === 'command') {
           completion = `/${selectedSuggestion.value} `
+        } else if (state.context.type === 'trace') {
+          completion = `${selectedSuggestion.value} `
         } else if (state.context.type === 'agent') {
           if (selectedSuggestion.type === 'agent') {
             completion = `@${selectedSuggestion.value} `
@@ -691,6 +699,8 @@ export function useUnifiedCompletion({
           return true
         case 'agent':
           return true
+        case 'trace':
+          return true
         case 'file':
           const prefix = context.prefix
 
@@ -743,6 +753,10 @@ export function useUnifiedCompletion({
         const fullCommand = `/${suggestion.value}`
         const matches = currentInput === fullCommand
         return matches
+      }
+
+      if (context.type === 'trace') {
+        return currentInput === suggestion.value
       }
 
       if (context.type === 'agent') {
