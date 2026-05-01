@@ -2,14 +2,20 @@ import { z } from 'zod'
 import { FallbackToolUseRejectedMessage } from '@components/FallbackToolUseRejectedMessage'
 import { Tool } from '@tool'
 import * as React from 'react'
-import type { Message } from '@query'
-import { createUserMessage } from '@utils/messages'
 import { getCommands } from '@commands'
 import {
   loadCustomCommands,
   type CustomCommandWithScope,
 } from '@services/customCommands'
 import { TOOL_NAME_FOR_PROMPT } from './prompt'
+import {
+  applyCommandContextModifier,
+  expandPromptCommand,
+  getPromptCommandContextValues,
+  normalizePromptCommandName,
+  resolveSkillCommand,
+  type ResolvedPromptCommand,
+} from '@utils/commands/promptCommandInvocation'
 
 const inputSchema = z.strictObject({
   skill: z
@@ -29,16 +35,6 @@ type Output = {
   commandName: string
   allowedTools?: string[]
   model?: string
-}
-
-function normalizeCommandModelName(model: unknown): string | undefined {
-  if (typeof model !== 'string') return undefined
-  const trimmed = model.trim()
-  if (!trimmed || trimmed === 'inherit') return undefined
-  if (trimmed === 'haiku') return 'quick'
-  if (trimmed === 'sonnet') return 'task'
-  if (trimmed === 'opus') return 'main'
-  return trimmed
 }
 
 export const SkillTool = {
@@ -139,10 +135,10 @@ ${availableSkills}${truncatedNotice}
         errorCode: 1,
       }
     }
-    const skillName = raw.startsWith('/') ? raw.slice(1) : raw
+    const skillName = normalizePromptCommandName(raw)
 
     const commands = context?.options?.commands ?? (await getCommands())
-    const cmd = findCommand(skillName, commands)
+    const cmd = resolveSkillCommand(skillName, commands)
     if (!cmd) {
       return {
         result: false,
@@ -171,10 +167,10 @@ ${availableSkills}${truncatedNotice}
   },
   async *call({ skill, args }: Input, context) {
     const raw = skill.trim()
-    const skillName = raw.startsWith('/') ? raw.slice(1) : raw
+    const skillName = normalizePromptCommandName(raw)
 
     const commands = context.options?.commands ?? (await getCommands())
-    const cmd = findCommand(skillName, commands)
+    const cmd = resolveSkillCommand(skillName, commands)
     if (!cmd) {
       throw new Error(`Unknown skill: ${skillName}`)
     }
@@ -187,38 +183,21 @@ ${availableSkills}${truncatedNotice}
       throw new Error(`Skill ${skillName} is not a prompt-based skill`)
     }
 
-    const prompt = await cmd.getPromptForCommand(args ?? '')
-    const expandedMessages: Message[] = prompt.map(msg => {
-      const userMessage = createUserMessage(
-        typeof msg.content === 'string'
-          ? msg.content
-          : msg.content
-              .map(block => (block.type === 'text' ? block.text : ''))
-              .join('\n'),
-      )
-      userMessage.options = {
-        ...userMessage.options,
-        isCustomCommand: true,
-        commandName: cmd.userFacingName(),
-        commandArgs: '',
-      }
-      return userMessage
-    })
-
-    const allowedTools: string[] = Array.isArray((cmd as any).allowedTools)
-      ? (cmd as any).allowedTools
-      : []
-    const model = normalizeCommandModelName((cmd as any).model)
-    const maxThinkingTokens: number | undefined =
-      typeof (cmd as any).maxThinkingTokens === 'number'
-        ? (cmd as any).maxThinkingTokens
-        : undefined
+    const expandedMessages = await expandPromptCommand(
+      cmd as ResolvedPromptCommand,
+      args ?? '',
+      { commandArgs: '' },
+    )
+    const commandContext = getPromptCommandContextValues(cmd)
 
     const output: Output = {
       success: true,
       commandName: skillName,
-      allowedTools: allowedTools.length > 0 ? allowedTools : undefined,
-      model,
+      allowedTools:
+        commandContext.allowedTools.length > 0
+          ? commandContext.allowedTools
+          : undefined,
+      model: commandContext.model,
     }
 
     yield {
@@ -226,41 +205,7 @@ ${availableSkills}${truncatedNotice}
       data: output,
       resultForAssistant: this.renderResultForAssistant(output),
       newMessages: expandedMessages,
-      contextModifier:
-        allowedTools.length > 0 || model || maxThinkingTokens !== undefined
-          ? {
-              modifyContext(ctx) {
-                const next = { ...ctx }
-
-                if (allowedTools.length > 0) {
-                  const prev = Array.isArray(
-                    (next.options as any)?.commandAllowedTools,
-                  )
-                    ? ((next.options as any).commandAllowedTools as string[])
-                    : []
-                  next.options = {
-                    ...(next.options || {}),
-                    commandAllowedTools: [
-                      ...new Set([...prev, ...allowedTools]),
-                    ],
-                  }
-                }
-
-                if (model) {
-                  next.options = { ...(next.options || {}), model }
-                }
-
-                if (maxThinkingTokens !== undefined) {
-                  next.options = {
-                    ...(next.options || {}),
-                    maxThinkingTokens,
-                  }
-                }
-
-                return next
-              },
-            }
-          : undefined,
+      contextModifier: applyCommandContextModifier(commandContext),
     }
   },
 } satisfies Tool<typeof inputSchema, Output>
@@ -284,15 +229,4 @@ ${description}
 ${location}
 </location>
 </skill>`
-}
-
-function findCommand(commandName: string, commands: any[]): any | null {
-  return (
-    commands.find(
-      (c: any) =>
-        c?.name === commandName ||
-        c?.userFacingName?.() === commandName ||
-        (Array.isArray(c?.aliases) && c.aliases.includes(commandName)),
-    ) ?? null
-  )
 }

@@ -32,3 +32,9 @@
 - 提交摘要/Commit: feat: add trace replay command and completion support.
 - 文件/File: `src/commands/trace.ts`、`src/utils/protocol/kodeAgentTraceReplay.ts`、`src/utils/completion/traceReplaySuggestions.ts`、`src/utils/completion/context.ts`、`tests/unit/trace-replay.test.ts`。
 - 破坏性变更/Breaking: 无 / None.
+
+## 2026-05-01 17:12
+- 背景/Context: 抽取并复用 prompt 命令调用逻辑，统一 SkillTool 与 SlashCommandTool 的命令解析、消息扩展与上下文修饰行为 / Extracted shared prompt-command invocation flow to unify command resolution, message expansion, and context modifiers across SkillTool and SlashCommandTool.
+- 提交摘要/Commit: refactor: unify prompt command invocation for skill and slash tools.
+- 文件/File: `src/utils/commands/promptCommandInvocation.ts`、`src/tools/ai/SkillTool/SkillTool.tsx`、`src/tools/interaction/SlashCommandTool/SlashCommandTool.tsx`、`tests/unit/skill-slash-permission-parity.test.ts`、`docs/skill-invocation-unification.md`。
+- 破坏性变更/Breaking: 无 / None.

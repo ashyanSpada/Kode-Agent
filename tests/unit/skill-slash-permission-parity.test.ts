@@ -66,6 +66,8 @@ describe('Skill/SlashCommand parity: contextModifier effects', () => {
     expect(nextCtx.options.model).toBe('quick')
     expect(nextCtx.options.maxThinkingTokens).toBe(123)
     expect(nextCtx.options.commandAllowedTools).toContain('Read(~/**)')
+    expect(firstValue.newMessages[0].options.commandName).toBe('pdf')
+    expect(firstValue.newMessages[0].options.commandArgs).toBe('')
   })
 
   test('SlashCommandTool sets model/maxThinkingTokens and accumulates allowed tools', async () => {
@@ -98,6 +100,10 @@ describe('Skill/SlashCommand parity: contextModifier effects', () => {
     expect(nextCtx.options.commandAllowedTools).toContain(
       'Edit(~/.kode/settings.json)',
     )
+    expect(firstValue.newMessages[0].message.content).toContain(
+      '<command-name>review-pr</command-name>',
+    )
+    expect(firstValue.newMessages[1].options.commandArgs).toBe('123')
   })
 })
 

@@ -1,13 +1,30 @@
 # Capability Enhancement Ideas
 
-This note captures candidate improvements for extending Kode Agent's capabilities. These are not implementation commitments; they are reviewable ideas to apply later.
+This note captures candidate improvements for extending Kode Agent's capabilities.
+
+## Status Summary
+
+| Option | Enhancement | Status |
+|--------|-------------|--------|
+| 1 | First-Class Trace Replay | Implemented |
+| 2 | Skill Invocation Unification | Implemented |
+| 3 | Trace-Aware Tool Fixtures | Pending |
+| 4 | Session Log Integrity Checks | Pending |
+| 5 | Capability Registry | Not planned |
+| 6 | Better Skill Discovery UX | Pending |
+| 7 | Replay-Based Regression Tests | Pending |
+| 8 | Permission Explainability | Pending |
+| 9 | Agent and Skill Interop | Pending |
+| 10 | Golden Protocol Tests | Pending |
 
 ## 1. First-Class Trace Replay
+
+Status: Implemented.
 
 Build on session JSONL persistence and sequential trace records with a deterministic replay runner:
 
 ```bash
-kode trace replay <session-id>
+/trace replay <session-id|latest> [--mode messages-only|stub-llm|stub-tools|full] [--json]
 ```
 
 Potential replay modes:
@@ -19,7 +36,18 @@ Potential replay modes:
 
 This would make real sessions reusable as bug repros and test fixtures.
 
+Implemented pieces:
+
+- deterministic trace replay helper in `src/utils/protocol/kodeAgentTraceReplay.ts`
+- interactive `/trace replay` command in `src/commands/trace.ts`
+- replay modes: `messages-only`, `stub-llm`, `stub-tools`, `full`
+- validation for sequence continuity, parent UUID chain, orphan tool results, unresolved tool uses, and message round trip
+- `/trace replay` autocomplete for existing trace IDs and `latest`
+- regression coverage in `tests/unit/trace-replay.test.ts`
+
 ## 2. Skill Invocation Unification
+
+Status: Implemented.
 
 Skills can be reached through the `Skill` tool and through slash-command expansion. Extract shared helpers so behavior cannot drift:
 
@@ -31,7 +59,18 @@ applyCommandContextModifier(command)
 
 This should centralize handling for `allowedTools`, `model`, `maxThinkingTokens`, prompt expansion, and metadata messages.
 
+Implemented pieces:
+
+- shared helper module in `src/utils/commands/promptCommandInvocation.ts`
+- `SkillTool` and `SlashCommandTool` now share command resolution, prompt expansion, context modifier construction, and model alias normalization
+- slash command metadata messages remain slash-only
+- Skill tool behavior keeps its existing assistant-facing result and compatibility metadata
+- implementation notes and examples in `docs/skill-invocation-unification.md`
+- parity coverage in `tests/unit/skill-slash-permission-parity.test.ts`
+
 ## 3. Trace-Aware Tool Fixtures
+
+Status: Pending.
 
 Add a fixture layer for replaying tool calls from traces. A fixture key could include:
 
@@ -43,6 +82,8 @@ Add a fixture layer for replaying tool calls from traces. A fixture key could in
 This lets tests replay turns without touching the filesystem, shell, or network unless explicitly requested.
 
 ## 4. Session Log Integrity Checks
+
+Status: Pending.
 
 Add a validator command:
 
@@ -61,6 +102,8 @@ Useful checks:
 This would make session persistence safer as it becomes a central trace format.
 
 ## 5. Capability Registry
+
+Status: Not planned.
 
 Introduce a normalized registry for tools, slash commands, skills, MCP tools, and agents:
 
@@ -81,6 +124,8 @@ Benefits:
 - better diagnostics
 
 ## 6. Better Skill Discovery UX
+
+Status: Pending.
 
 Add explicit skill inspection commands:
 
@@ -103,6 +148,8 @@ This would make plugin and skill debugging easier.
 
 ## 7. Replay-Based Regression Tests
 
+Status: Pending.
+
 Add a test helper:
 
 ```ts
@@ -119,6 +166,8 @@ Good targets:
 - session resume
 
 ## 8. Permission Explainability
+
+Status: Pending.
 
 Add an explanation API:
 
@@ -138,6 +187,8 @@ This can improve permission prompts, logs, tests, and debugging.
 
 ## 9. Agent and Skill Interop
 
+Status: Pending.
+
 Allow agent definitions to declare default skill sets:
 
 ```yaml
@@ -149,6 +200,8 @@ skills:
 Then `TaskTool` agents can get scoped skills without exposing every skill in the main conversation.
 
 ## 10. Golden Protocol Tests
+
+Status: Pending.
 
 Add golden tests for external-facing protocol surfaces:
 

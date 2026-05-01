@@ -2,14 +2,20 @@ import { z } from 'zod'
 import { FallbackToolUseRejectedMessage } from '@components/FallbackToolUseRejectedMessage'
 import { Tool } from '@tool'
 import * as React from 'react'
-import type { Message } from '@query'
-import { createUserMessage } from '@utils/messages'
 import { getCommands } from '@commands'
 import {
   loadCustomCommands,
   type CustomCommandWithScope,
 } from '@services/customCommands'
 import { TOOL_NAME_FOR_PROMPT } from './prompt'
+import {
+  applyCommandContextModifier,
+  expandPromptCommand,
+  getPromptCommandContextValues,
+  parseSlashPromptCommand,
+  resolveSkillCommand,
+  type ResolvedPromptCommand,
+} from '@utils/commands/promptCommandInvocation'
 
 const inputSchema = z.strictObject({
   command: z
@@ -23,16 +29,6 @@ type Input = z.infer<typeof inputSchema>
 type Output = {
   success: boolean
   commandName: string
-}
-
-function normalizeCommandModelName(model: unknown): string | undefined {
-  if (typeof model !== 'string') return undefined
-  const trimmed = model.trim()
-  if (!trimmed || trimmed === 'inherit') return undefined
-  if (trimmed === 'haiku') return 'quick'
-  if (trimmed === 'sonnet') return 'task'
-  if (trimmed === 'opus') return 'main'
-  return trimmed
 }
 
 function getCharBudget(): number {
@@ -136,7 +132,7 @@ ${availableLines}${truncatedNotice}
     return `Launching command: /${output.commandName}`
   },
   async validateInput({ command }: Input, context) {
-    const parsed = parseSlashCommand(command)
+    const parsed = parseSlashPromptCommand(command)
     if (!parsed) {
       return {
         result: false,
@@ -147,7 +143,7 @@ ${availableLines}${truncatedNotice}
 
     const commands = context?.options?.commands ?? (await getCommands())
 
-    const cmd = findCommand(parsed.commandName, commands)
+    const cmd = resolveSkillCommand(parsed.commandName, commands)
     if (!cmd) {
       return {
         result: false,
@@ -183,13 +179,13 @@ ${availableLines}${truncatedNotice}
     return { result: true }
   },
   async *call({ command }: Input, context) {
-    const parsed = parseSlashCommand(command)
+    const parsed = parseSlashPromptCommand(command)
     if (!parsed) {
       throw new Error(`Invalid slash command format: ${command}`)
     }
 
     const commands = context.options?.commands ?? (await getCommands())
-    const cmd = findCommand(parsed.commandName, commands)
+    const cmd = resolveSkillCommand(parsed.commandName, commands)
     if (!cmd) {
       throw new Error(`Unknown slash command: ${parsed.commandName}`)
     }
@@ -209,39 +205,12 @@ ${availableLines}${truncatedNotice}
       )
     }
 
-    const prompt = await cmd.getPromptForCommand(parsed.args)
-    const expandedMessages: Message[] = prompt.map(msg => {
-      const userMessage = createUserMessage(
-        typeof msg.content === 'string'
-          ? msg.content
-          : msg.content
-              .map(block => (block.type === 'text' ? block.text : ''))
-              .join('\n'),
-      )
-      userMessage.options = {
-        ...userMessage.options,
-        isCustomCommand: true,
-        commandName: cmd.userFacingName(),
-        commandArgs: parsed.args,
-      }
-      return userMessage
-    })
-
-    const commandNameForMeta = cmd.userFacingName()
-    const progressMessage = (cmd as any).progressMessage || 'running'
-    const metaMessage =
-      createUserMessage(`<command-name>${commandNameForMeta}</command-name>
-<command-message>${commandNameForMeta} is ${progressMessage}…</command-message>
-<command-args>${parsed.args}</command-args>`)
-
-    const allowedTools: string[] = Array.isArray((cmd as any).allowedTools)
-      ? (cmd as any).allowedTools
-      : []
-    const model = normalizeCommandModelName((cmd as any).model)
-    const maxThinkingTokens: number | undefined =
-      typeof (cmd as any).maxThinkingTokens === 'number'
-        ? (cmd as any).maxThinkingTokens
-        : undefined
+    const newMessages = await expandPromptCommand(
+      cmd as ResolvedPromptCommand,
+      parsed.args,
+      { commandArgs: parsed.args, includeMetadata: true },
+    )
+    const commandContext = getPromptCommandContextValues(cmd)
 
     const output: Output = { success: true, commandName: parsed.commandName }
 
@@ -249,69 +218,8 @@ ${availableLines}${truncatedNotice}
       type: 'result' as const,
       data: output,
       resultForAssistant: this.renderResultForAssistant(output),
-      newMessages: [metaMessage, ...expandedMessages],
-      contextModifier:
-        allowedTools.length > 0 || model || maxThinkingTokens !== undefined
-          ? {
-              modifyContext(ctx) {
-                const next = { ...ctx }
-
-                if (allowedTools.length > 0) {
-                  const prev = Array.isArray(
-                    (next.options as any)?.commandAllowedTools,
-                  )
-                    ? ((next.options as any).commandAllowedTools as string[])
-                    : []
-                  next.options = {
-                    ...(next.options || {}),
-                    commandAllowedTools: [
-                      ...new Set([...prev, ...allowedTools]),
-                    ],
-                  }
-                }
-
-                if (model) {
-                  next.options = { ...(next.options || {}), model }
-                }
-
-                if (maxThinkingTokens !== undefined) {
-                  next.options = {
-                    ...(next.options || {}),
-                    maxThinkingTokens,
-                  }
-                }
-
-                return next
-              },
-            }
-          : undefined,
+      newMessages,
+      contextModifier: applyCommandContextModifier(commandContext),
     }
   },
 } satisfies Tool<typeof inputSchema, Output>
-
-function parseSlashCommand(
-  command: string,
-): { commandName: string; args: string } | null {
-  const trimmed = command.trim()
-  if (!trimmed.startsWith('/')) return null
-  const withoutSlash = trimmed.slice(1)
-  const spaceIdx = withoutSlash.indexOf(' ')
-  const commandName =
-    spaceIdx === -1
-      ? withoutSlash.trim()
-      : withoutSlash.slice(0, spaceIdx).trim()
-  if (!commandName) return null
-  const args = spaceIdx === -1 ? '' : withoutSlash.slice(spaceIdx + 1).trim()
-  return { commandName, args }
-}
-
-function findCommand(commandName: string, commands: any[]): any | null {
-  return (
-    commands.find(
-      (c: any) =>
-        c?.name === commandName ||
-        c?.userFacingName?.() === commandName ||
-        (Array.isArray(c?.aliases) && c.aliases.includes(commandName)),
-    ) ?? null
-  )
-}
