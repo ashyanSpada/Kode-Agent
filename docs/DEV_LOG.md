@@ -44,3 +44,9 @@
 - 提交摘要/Commit: feat: add capability registry and wire command/tool surfaces.
 - 文件/File: `src/utils/capabilities/registry.ts`、`src/acp/kodeAcpAgent.ts`、`src/entrypoints/cli/printMode.ts`、`src/utils/completion/slashCommandSuggestions.ts`、`tests/unit/capability-registry.test.ts`。
 - 破坏性变更/Breaking: 无 / None.
+
+## 2026-05-01 17:43
+- 背景/Context: 新增 skill 巡检命令并扩展 CLI 子命令，支持列表/详情/诊断输出（含 JSON）以提升技能可发现性与排障效率 / Added skill inspection command and CLI subcommands with list/show/doctor (including JSON) to improve skill discovery and diagnostics.
+- 提交摘要/Commit: feat: add skill inspection commands for CLI and slash usage.
+- 文件/File: `src/commands/skill.ts`、`src/entrypoints/cli/runCli.tsx`、`src/commands/index.ts`、`tests/unit/skill-command.test.ts`、`docs/capability-enhancement-ideas.md`。
+- 破坏性变更/Breaking: 无 / None.

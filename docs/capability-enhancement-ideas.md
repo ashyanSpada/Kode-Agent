@@ -11,7 +11,7 @@ This note captures candidate improvements for extending Kode Agent's capabilitie
 | 3 | Trace-Aware Tool Fixtures | Pending |
 | 4 | Session Log Integrity Checks | Pending |
 | 5 | Capability Registry | Implemented |
-| 6 | Better Skill Discovery UX | Pending |
+| 6 | Better Skill Discovery UX | Implemented |
 | 7 | Replay-Based Regression Tests | Pending |
 | 8 | Permission Explainability | Pending |
 | 9 | Agent and Skill Interop | Pending |
@@ -134,7 +134,7 @@ Implemented pieces:
 
 ## 6. Better Skill Discovery UX
 
-Status: Pending.
+Status: Implemented.
 
 Add explicit skill inspection commands:
 
@@ -154,6 +154,15 @@ Useful output:
 - why a skill was skipped
 
 This would make plugin and skill debugging easier.
+
+Implemented pieces:
+
+- interactive `/skill list`, `/skill show <name>`, and `/skill doctor`
+- CLI `kode skill list`, `kode skill show <name>`, and `kode skill doctor`
+- optional `--json` output for all three inspection commands
+- skill detail output includes source path, description, allowed tools, model override, slash-callable status, Skill tool callable status, version, and `whenToUse`
+- doctor output reports loaded skills, skipped skill directories, invalid names, frontmatter name mismatches, strict-mode skips, and parse failures
+- regression coverage in `tests/unit/skill-command.test.ts`
 
 ## 7. Replay-Based Regression Tests
 

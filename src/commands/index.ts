@@ -24,6 +24,7 @@ import refreshCommands from './refresh-commands'
 import releaseNotes from './release-notes'
 import review from './review'
 import rename from './rename'
+import skill from './skill'
 import statusline from './statusline'
 import tag from './tag'
 import todos from './todos'
@@ -114,6 +115,7 @@ const COMMANDS = memoize((): Command[] => [
   releaseNotes,
   bug,
   review,
+  skill,
   todos,
   trace,
   ...(isAnthropicAuthEnabled() ? [logout, login()] : []),

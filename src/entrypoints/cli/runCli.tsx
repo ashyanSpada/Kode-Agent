@@ -2033,6 +2033,70 @@ async function parseArgs(
       }
     })
 
+  const skillInspectCmd = program
+    .command('skill')
+    .description('Inspect available skills')
+
+  skillInspectCmd
+    .command('list')
+    .description('List available skills')
+    .option('--cwd <cwd>', 'The current working directory', String, cwd())
+    .option('--json', 'Output JSON', () => true)
+    .action(async (options: any) => {
+      try {
+        const { setCwd } = await import('@utils/state')
+        const { runSkillCommand } = await import('@commands/skill')
+        await setCwd(options.cwd ?? cwd())
+        console.log(await runSkillCommand(`list${options.json ? ' --json' : ''}`))
+        process.exit(0)
+      } catch (error) {
+        console.error((error as Error).message)
+        process.exit(1)
+      }
+    })
+
+  skillInspectCmd
+    .command('show <name>')
+    .description('Show one available skill')
+    .option('--cwd <cwd>', 'The current working directory', String, cwd())
+    .option('--json', 'Output JSON', () => true)
+    .action(async (name: string, options: any) => {
+      try {
+        const { setCwd } = await import('@utils/state')
+        const { runSkillCommand } = await import('@commands/skill')
+        await setCwd(options.cwd ?? cwd())
+        console.log(
+          await runSkillCommand(
+            `show ${JSON.stringify(name)}${options.json ? ' --json' : ''}`,
+          ),
+        )
+        process.exit(0)
+      } catch (error) {
+        console.error((error as Error).message)
+        process.exit(1)
+      }
+    })
+
+  skillInspectCmd
+    .command('doctor')
+    .description('Inspect skill discovery and skipped skills')
+    .option('--cwd <cwd>', 'The current working directory', String, cwd())
+    .option('--json', 'Output JSON', () => true)
+    .action(async (options: any) => {
+      try {
+        const { setCwd } = await import('@utils/state')
+        const { runSkillCommand } = await import('@commands/skill')
+        await setCwd(options.cwd ?? cwd())
+        console.log(
+          await runSkillCommand(`doctor${options.json ? ' --json' : ''}`),
+        )
+        process.exit(0)
+      } catch (error) {
+        console.error((error as Error).message)
+        process.exit(1)
+      }
+    })
+
   const allowedTools = program
     .command('approved-tools')
     .description('Manage approved tools')
