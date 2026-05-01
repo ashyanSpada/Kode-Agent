@@ -63,7 +63,7 @@ export const EnterPlanModeTool = {
         </Box>
         <Box paddingLeft={2}>
           <Text dimColor>
-            Kode Agent is now exploring and designing an implementation
+            Oh my Agent is now exploring and designing an implementation
             approach.
           </Text>
         </Box>

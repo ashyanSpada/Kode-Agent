@@ -1,4 +1,4 @@
-# Kode CLI Test Suite
+# Oh my Agent CLI Test Suite
 
 AI-friendly testing framework that validates multi-model adapter architecture with clear separation between unit, integration, and production testing.
 

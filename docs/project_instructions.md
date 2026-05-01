@@ -1,6 +1,6 @@
 # Project Instructions (AGENTS.md / CLAUDE.md)
 
-Kode supports **project-scoped instruction files** that are automatically loaded and provided as additional context during runs.
+Oh my Agent supports **project-scoped instruction files** that are automatically loaded and provided as additional context during runs.
 
 ## Files
 
@@ -46,4 +46,3 @@ If a `CLAUDE.md` exists in the **current working directory**, Kode appends it af
 `# Legacy instructions (CLAUDE.md)`
 
 `CLAUDE.md` is supported for compatibility; prefer using `AGENTS.md` for new projects.
-

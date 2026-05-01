@@ -62,3 +62,9 @@
 - 提交摘要/Commit: feat: add oma bin alias and require streaming parser on adapters.
 - 文件/File: `package.json`、`scripts/postinstall.js`、`src/services/ai/adapters/base.ts`、`docs/reproduction-plan.md`。
 - 破坏性变更/Breaking: 无 / None.
+
+## 2026-05-01 21:17
+- 背景/Context: 将对外展示名称统一为「Oh my Agent」，更新 `PRODUCT_NAME`、主要文档与多处 TUI 文案，并同步修正依赖旧文案的单测期望 / Rebranded user-facing product copy to “Oh my Agent” via `PRODUCT_NAME`, core docs, and TUI strings; updated unit tests that asserted the previous wording.
+- 提交摘要/Commit: feat: rebrand user-facing copy to Oh my Agent.
+- 文件/File: `src/constants/product.ts`、README/README.zh-CN、`docs/*`（多篇）、Plan/WebFetch/AskUserQuestion/OAuth/ModelSelector 等 UI 组件与权限提示、`tests/unit/tool-prompts-schema-parity.test.ts`、`tests/unit/ask-user-question-tool-ui.test.tsx`。
+- 破坏性变更/Breaking: 用户可见文案变更（与上游 reference CLI 字面一致性可能不再成立） / User-visible wording changed (may diverge from upstream reference CLI string parity).

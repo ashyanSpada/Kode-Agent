@@ -1,4 +1,4 @@
-# Kode Development Documentation
+# Oh my Agent Development Documentation
 
 This comprehensive documentation provides a complete understanding of the Kode codebase architecture, design patterns, and implementation details for developers.
 

@@ -1,4 +1,4 @@
-# Kode - AI Coding
+# Oh my Agent - AI Coding
 <img width="991" height="479" alt="image" src="https://github.com/user-attachments/assets/c1751e92-94dc-4e4a-9558-8cd2d058c1a1" />  <br> 
 [![npm version](https://badge.fury.io/js/@shareai-lab%2Fkode.svg)](https://www.npmjs.com/package/@shareai-lab/kode)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
@@ -23,7 +23,7 @@
 
 ## 🤝 AGENTS.md Standard Support
 
-Kode supports the [AGENTS.md standard](https://agents.md): a simple, open format for guiding coding agents, used by 60k+ open-source projects.
+Oh my Agent supports the [AGENTS.md standard](https://agents.md): a simple, open format for guiding coding agents, used by 60k+ open-source projects.
 
 ### Full Compatibility with Multiple Standards
 
@@ -43,15 +43,15 @@ Use `# Your documentation request` to generate and maintain your AGENTS.md file 
 
 ## Overview
 
-Kode is a powerful AI assistant that lives in your terminal. It can understand your codebase, edit files, run commands, and handle entire workflows for you.
+Oh my Agent is a powerful AI assistant that lives in your terminal. It can understand your codebase, edit files, run commands, and handle entire workflows for you.
 
-> **⚠️ Security Notice**: Kode runs in YOLO mode by default (equivalent to the `--dangerously-skip-permissions` flag), bypassing all permission checks for maximum productivity. YOLO mode is recommended only for trusted, secure environments when working on non-critical projects. If you're working with important files or using models of questionable capability, we strongly recommend using `kode --safe` to enable permission checks and manual approval for all operations.
+> **⚠️ Security Notice**: Oh my Agent runs in YOLO mode by default (equivalent to the `--dangerously-skip-permissions` flag), bypassing all permission checks for maximum productivity. YOLO mode is recommended only for trusted, secure environments when working on non-critical projects. If you're working with important files or using models of questionable capability, we strongly recommend using `kode --safe` to enable permission checks and manual approval for all operations.
 > 
 > **📊 Model Performance**: For optimal performance, we recommend using newer, more capable models designed for autonomous task completion. Avoid older Q&A-focused models like GPT-4o or Gemini 2.5 Pro, which are optimized for answering questions rather than sustained independent task execution. Choose models specifically trained for agentic workflows and extended reasoning capabilities.
 
 ## Network & Privacy
 
-- Kode does not send product telemetry/analytics by default.
+- Oh my Agent does not send product telemetry/analytics by default.
 - Network requests happen only when you explicitly use networked features:
   - Model provider requests (Anthropic/OpenAI-compatible endpoints you configure)
   - Web tools (`WebFetch`, `WebSearch`)

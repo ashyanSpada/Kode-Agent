@@ -2,7 +2,7 @@
 
 ## Overview
 
-Kode supports custom slash commands through Markdown files placed in `.claude/commands/` or `.kode/commands/` directories. This feature allows you to create reusable prompts and workflows tailored to your specific needs.
+Oh my Agent supports custom slash commands through Markdown files placed in `.claude/commands/` or `.kode/commands/` directories. This feature allows you to create reusable prompts and workflows tailored to your specific needs.
 
 ## Directory Structure
 

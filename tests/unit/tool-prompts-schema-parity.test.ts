@@ -87,10 +87,10 @@ describe('Tool prompt/description/schema parity', () => {
         url: 'https://example.com',
         prompt: 'x',
       } as any),
-    ).toBe('Kode Agent wants to fetch content from example.com')
+    ).toBe('Oh my Agent wants to fetch content from example.com')
 
     expect(
       await WebFetchTool.description?.({ url: '', prompt: 'x' } as any),
-    ).toBe('Kode Agent wants to fetch content from this URL')
+    ).toBe('Oh my Agent wants to fetch content from this URL')
   })
 })

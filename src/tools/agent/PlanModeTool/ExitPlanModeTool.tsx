@@ -95,7 +95,7 @@ export const ExitPlanModeTool = {
           <Text>&nbsp;&nbsp;⎿ &nbsp;</Text>
           <Box flexDirection="column" width="100%">
             <Text color={theme.error}>
-              User rejected Kode Agent&apos;s plan:
+              User rejected Oh my Agent&apos;s plan:
             </Text>
             <Box
               borderStyle="round"
@@ -121,7 +121,7 @@ export const ExitPlanModeTool = {
       <Box flexDirection="column" marginTop={1} width="100%">
         <Box flexDirection="row">
           <Text color={theme.planMode}>{BLACK_CIRCLE}</Text>
-          <Text> User approved Kode Agent&apos;s plan</Text>
+          <Text> User approved Oh my Agent&apos;s plan</Text>
         </Box>
         <Box flexDirection="row">
           <Text>&nbsp;&nbsp;⎿ &nbsp;</Text>

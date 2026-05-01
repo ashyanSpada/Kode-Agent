@@ -92,7 +92,7 @@ export const AskUserQuestionTool = {
       <Box flexDirection="column" marginTop={1}>
         <Box flexDirection="row">
           <Text color={theme.text}>{BLACK_CIRCLE}&nbsp;</Text>
-          <Text>User answered Kode Agent&apos;s questions:</Text>
+          <Text>User answered Oh my Agent&apos;s questions:</Text>
         </Box>
         <Box flexDirection="column" paddingLeft={2}>
           {Object.entries(output.answers).map(([question, answer]) => (

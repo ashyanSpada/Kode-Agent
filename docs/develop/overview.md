@@ -1,8 +1,8 @@
-# Kode System Overview
+# Oh my Agent System Overview
 
 ## Introduction
 
-Kode is an AI-powered terminal assistant that brings the power of Claude and other language models directly to your command line. It's designed as a sophisticated development tool that understands your codebase, executes commands, and handles complex workflows through natural language interaction.
+Oh my Agent is an AI-powered terminal assistant that brings the power of Claude and other language models directly to your command line. It's designed as a sophisticated development tool that understands your codebase, executes commands, and handles complex workflows through natural language interaction.
 
 ## Core Design Philosophy
 

@@ -1,4 +1,4 @@
-export const PRODUCT_NAME = 'Kode'
+export const PRODUCT_NAME = 'Oh my Agent'
 export const PRODUCT_URL = 'https://github.com/shareAI-lab/Anykode'
 export const PROJECT_FILE = 'AGENTS.md'
 export const PRODUCT_COMMAND = 'kode'

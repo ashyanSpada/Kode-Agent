@@ -97,7 +97,7 @@ export function WebFetchPermissionRequest({
                   ]
                 : []),
               {
-                label: `No, and tell Kode Agent what to do differently ${chalk.bold('(esc)')}`,
+                label: `No, and tell Oh my Agent what to do differently ${chalk.bold('(esc)')}`,
                 value: 'no',
               },
             ]}

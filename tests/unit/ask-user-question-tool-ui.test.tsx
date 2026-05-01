@@ -91,7 +91,7 @@ describe('AskUserQuestionTool UI parity (Reference CLI)', () => {
 
     const out = await renderToText(<>{element}</>)
 
-    expect(out).toContain("User answered Kode Agent's questions:")
+    expect(out).toContain("User answered Oh my Agent's questions:")
     expect(out).toContain('· Question 1 → Answer A')
     expect(out).toContain('· Question 2 → Other: hello')
   })

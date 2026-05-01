@@ -1,4 +1,4 @@
-# Publishing Kode to NPM
+# Publishing Oh my Agent to NPM
 
 ## Architecture Overview
 

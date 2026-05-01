@@ -1,4 +1,4 @@
-# Kode Project Structure
+# Oh my Agent Project Structure
 
 ## Overview
 Clean, modern TypeScript CLI project using Bun for development and building.

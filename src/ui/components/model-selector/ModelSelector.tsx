@@ -2674,7 +2674,7 @@ export function ModelSelector({
               : ''}
           </Text>
           <Box flexDirection="column" gap={1}>
-            <Text bold>Choose how Kode should connect to llama.cpp:</Text>
+            <Text bold>Choose how Oh my Agent should connect to llama.cpp:</Text>
             <WindowedOptions
               options={options}
               focusedIndex={llamaCppModeFocusIndex}

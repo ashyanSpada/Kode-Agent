@@ -1,6 +1,6 @@
 # Skills & Plugins
 
-Kode supports the [Agent Skills](https://agentskills.io) open format for extending agent capabilities with reusable instruction sets.
+Oh my Agent supports the [Agent Skills](https://agentskills.io) open format for extending agent capabilities with reusable instruction sets.
 
 - **Agent Skills** (directories containing `SKILL.md` - see [specification](https://agentskills.io/specification))
 - **Marketplace compatibility** (`.kode-plugin/marketplace.json`, legacy `.claude-plugin/marketplace.json`)
